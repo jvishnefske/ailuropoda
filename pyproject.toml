@@ -3,6 +3,17 @@ name = "cbor-codegen-deps"
 version = "0.1.0"
 description = "Dependencies for CBOR code generation"
 requires-python = ">=3.8"
+dependencies = [
+    "jinja2>=3.1.6",
+    "pycparser>=2.22",
+]
 
 [dependencies]
 pycparser = ">=2.21"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.6.1",
+    "cppyy>=3.5.0",
+    "pytest>=8.3.5",
+]
