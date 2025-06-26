@@ -17,3 +17,6 @@ dev = [
     "cppyy>=3.5.0",
     "pytest>=8.3.5",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
