@@ -44,6 +44,15 @@ pip install pycparser
 uvx pip install pycparser
 ```
 
+### For Development & Testing
+
+```bash
+# Install development dependencies (including pytest and pytest-subprocess)
+pip install ".[dev]"
+# Or with uvx:
+uvx pip install ".[dev]"
+```
+
 ## 🚀 Usage
 
 1.  **Run the script**:
