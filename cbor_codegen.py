@@ -229,6 +229,11 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
         print("Warning: Skipping anonymous struct definition.", file=sys.stderr)
         return "", ""
 
+    # Add this check to prevent TypeError if decls is None
+    if struct_node.decls is None:
+        print(f"Warning: Skipping struct '{struct_name}' as its definition (members) could not be found.", file=sys.stderr)
+        return "", ""
+
     encode_func_name = f"encode_{struct_name}"
     decode_func_name = f"decode_{struct_name}"
 
