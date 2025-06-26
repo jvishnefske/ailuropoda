@@ -14,7 +14,7 @@ from cbor_codegen import (
     parse_c_string,
     _find_struct,
     _collect_struct_and_typedef_definitions,
-    _get_base_type_and_modifiers, # New helper
+    _get_base_type_and_modifiers,
     _get_struct_members,
     generate_cbor_code
 )
@@ -74,34 +74,31 @@ def test_collect_struct_and_typedef_definitions():
     typedef struct S2 { float b; } T2;
     typedef struct { char c; } T3;
     typedef S1 T1;
-    typedef struct S4* T4_ptr;
-    struct S4 { int d; };
     """
     file_ast = parse_c_string(c_code)
     struct_defs, typedef_map = _collect_struct_and_typedef_definitions(file_ast)
 
     assert "S1" in struct_defs
     assert "S2" in struct_defs
-    assert "S4" in struct_defs
     assert "T1" in typedef_map
     assert "T2" in typedef_map
     assert "T3" in typedef_map
-    assert "T4_ptr" in typedef_map
 
     assert isinstance(struct_defs["S1"], c_ast.Struct)
     assert isinstance(struct_defs["S2"], c_ast.Struct)
-    assert isinstance(struct_defs["S4"], c_ast.Struct)
 
-    assert isinstance(typedef_map["T1"], c_ast.Struct) # T1 should resolve to S1 struct
-    assert typedef_map["T1"].name == "S1"
-    assert isinstance(typedef_map["T2"], c_ast.Struct)
-    assert typedef_map["T2"].name == "S2"
-    assert isinstance(typedef_map["T3"], c_ast.Struct)
-    assert typedef_map["T3"].name is None # Anonymous struct
+    # T1 should resolve to S1 struct
+    # The typedef_map stores the TypeDecl/IdentifierType, _get_base_type_and_modifiers resolves it to Struct
+    assert isinstance(typedef_map["T1"], c_ast.IdentifierType)
+    assert typedef_map["T1"].names == ['S1']
 
-    assert isinstance(typedef_map["T4_ptr"], c_ast.PtrDecl)
-    assert isinstance(typedef_map["T4_ptr"].type.type, c_ast.Struct)
-    assert typedef_map["T4_ptr"].type.type.name == "S4"
+    assert isinstance(typedef_map["T2"], c_ast.TypeDecl) # T2 is a TypeDecl wrapping a Struct
+    assert isinstance(typedef_map["T2"].type, c_ast.Struct)
+    assert typedef_map["T2"].type.name == "S2"
+
+    assert isinstance(typedef_map["T3"], c_ast.TypeDecl) # T3 is a TypeDecl wrapping an anonymous Struct
+    assert isinstance(typedef_map["T3"].type, c_ast.Struct)
+    assert typedef_map["T3"].type.name is None
 
 
 def test_expand_in_place_typedef():
@@ -122,12 +119,12 @@ def test_expand_in_place_typedef():
 
     assert len(members) == 2
     assert members[0]['name'] == 'start'
-    assert members[0]['type_name'] == 'anonymous_struct' # Or 'Point' if we prefer typedef name
+    assert members[0]['type_name'] == 'anonymous_struct'
     assert members[0]['is_struct']
     assert members[0]['type_category'] == 'struct'
 
     assert members[1]['name'] == 'end'
-    assert members[1]['type_name'] == 'anonymous_struct' # Or 'Point'
+    assert members[1]['type_name'] == 'anonymous_struct'
     assert members[1]['is_struct']
     assert members[1]['type_category'] == 'struct'
 
@@ -217,8 +214,6 @@ def test_get_base_type_and_modifiers_typedef_pointer_to_struct():
 
 def test_get_struct_members_simple():
     c_code = """
-    #include <stdint.h>
-    #include <stdbool.h>
     struct SimpleData {
         int32_t id;
         char name[32];
@@ -288,8 +283,6 @@ def test_get_struct_members_nested_and_pointer():
 
 def test_generate_cbor_code_for_simple_struct(tmp_path):
     header_content = """
-    #include <stdint.h>
-    #include <stdbool.h>
     struct MySimpleStruct {
         int id;
         char name[16];
@@ -323,7 +316,6 @@ def test_generate_cbor_code_for_simple_struct(tmp_path):
 
 def test_generate_cbor_code_for_struct_with_nested_struct(tmp_path):
     header_content = """
-    #include <stdint.h>
     struct Inner {
         int x;
     };

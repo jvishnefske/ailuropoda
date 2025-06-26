@@ -45,15 +45,15 @@ def _find_struct(struct_name, ast_node):
 
 def _collect_struct_and_typedef_definitions(ast):
     """
-    Collects all struct definitions and typedefs to structs from the AST.
+    Collects all struct definitions and typedefs from the AST.
     Returns two dictionaries:
     - struct_defs: {struct_name: c_ast.Struct node}
-    - typedef_map: {typedef_name: resolved_c_ast_node}
+    - typedef_map: {typedef_name: c_ast.TypeNode (e.g., TypeDecl, PtrDecl, IdentifierType)}
     """
     struct_defs = {}
     typedef_map = {}
 
-    # First pass: Collect all named struct definitions and direct typedefs to anonymous structs
+    # First pass: Collect all named struct definitions and direct typedefs
     for ext in ast.ext:
         if isinstance(ext, c_ast.Decl) and isinstance(ext.type, c_ast.Struct):
             if ext.type.name: # Named struct definition: struct MyStruct { ... };
@@ -61,38 +61,9 @@ def _collect_struct_and_typedef_definitions(ast):
         elif isinstance(ext, c_ast.Struct) and ext.name: # Standalone struct definition: struct MyStruct;
             struct_defs[ext.name] = ext
         elif isinstance(ext, c_ast.Typedef):
-            current_type = ext.type
-            # Traverse through PtrDecl and TypeDecl to find the base type
-            while isinstance(current_type, (c_ast.PtrDecl, c_ast.TypeDecl)):
-                current_type = current_type.type
-
-            if isinstance(current_type, c_ast.Struct):
-                # typedef struct { ... } MyStruct; or typedef struct TaggedStruct { ... } MyStruct;
-                typedef_map[ext.name] = current_type # Map typedef name to the actual Struct node
-                if current_type.name: # If the anonymous struct also has a tag
-                    struct_defs[current_type.name] = current_type
-            elif isinstance(current_type, c_ast.IdentifierType):
-                # typedef ExistingType MyNewType;
-                typedef_map[ext.name] = current_type
-
-    # Second pass: Resolve typedefs that refer to other typedefs or named structs
-    # This is crucial for `typedef S1 T1;` where S1 is a struct.
-    for typedef_name, typedef_node in list(typedef_map.items()):
-        if isinstance(typedef_node, c_ast.IdentifierType):
-            resolved_type = struct_defs.get(typedef_node.names[0])
-            if resolved_type:
-                typedef_map[typedef_name] = resolved_type
-            else:
-                # Could be a typedef to a primitive type, or an unresolved struct.
-                # For now, we keep it as IdentifierType if not a struct.
-                pass
-        # If it's a PtrDecl pointing to an IdentifierType, resolve the IdentifierType
-        # This handles cases like `typedef struct MyStruct* MyStructPtr;`
-        elif isinstance(typedef_node, c_ast.PtrDecl) and isinstance(typedef_node.type, c_ast.TypeDecl) and isinstance(typedef_node.type.type, c_ast.IdentifierType):
-            resolved_base_type = struct_defs.get(typedef_node.type.type.names[0])
-            if resolved_base_type:
-                # Reconstruct the PtrDecl with the resolved struct as its base type
-                typedef_map[typedef_name] = c_ast.PtrDecl(type=c_ast.TypeDecl(declname=None, quals=[], type=resolved_base_type))
+            # Store the type node directly (e.g., TypeDecl, PtrDecl, IdentifierType)
+            # The full resolution will happen in _get_base_type_and_modifiers
+            typedef_map[ext.name] = ext.type
 
     return struct_defs, typedef_map
 
@@ -129,15 +100,20 @@ def _get_base_type_and_modifiers(type_node, typedef_map):
         typedef_name = ' '.join(current_node.names)
         resolved_typedef = typedef_map.get(typedef_name)
         if resolved_typedef:
-            # If the typedef resolves to a pointer, update is_pointer and continue resolving
-            if isinstance(resolved_typedef, c_ast.PtrDecl):
-                is_pointer = True
-                # Recursively get base type from the resolved pointer typedef
-                resolved_base, _, _ = _get_base_type_and_modifiers(resolved_typedef.type, typedef_map)
-                return resolved_base, is_pointer, array_size
-            else:
-                current_node = resolved_typedef # Use the resolved node as the new current_node
+            # If the resolved_typedef is itself a complex type (PtrDecl, ArrayDecl, TypeDecl),
+            # recursively process it to get its base type and modifiers.
+            # The 'is_pointer' and 'array_size' from the current level should be combined
+            # with those from the resolved typedef.
+            # For simplicity, we'll re-evaluate the entire resolved type.
+            # This handles cases like `typedef struct MyStruct* MyStructPtr;`
+            # or `typedef int IntArray[10];`
+            resolved_base, resolved_is_pointer, resolved_array_size = \
+                _get_base_type_and_modifiers(resolved_typedef, typedef_map)
 
+            # Combine modifiers: if either is a pointer, the final type is a pointer.
+            # The outermost array size takes precedence.
+            return resolved_base, is_pointer or resolved_is_pointer, array_size if array_size is not None else resolved_array_size
+        
     return current_node, is_pointer, array_size
 
 def _get_struct_members(struct_node, struct_defs, typedef_map):
