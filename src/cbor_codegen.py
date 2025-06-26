@@ -233,7 +233,24 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
     for member_name, type_info in members_to_encode:
         code.append(f"    cbor_encode_text_string(&map_encoder, \"{member_name}\", strlen(\"{member_name}\"));")
 
-        if type_info['type'] == 'primitive':
+        # Prioritize array handling
+        if type_info['is_array'] and type_info['array_len'] is not None:
+            if type_info['type'] == 'char_array':
+                code.append(f"    cbor_encode_text_string(&map_encoder, data->{member_name}, strlen(data->{member_name}));")
+            else: # Arrays of other primitive types
+                code.append(f"    cbor_encode_array_start(&map_encoder, &map_encoder, {type_info['array_len']});")
+                code.append(f"    for (size_t i = 0; i < {type_info['array_len']}; ++i) {{")
+                if type_info['base_type'] in ['int', 'short', 'long', 'unsigned int', 'unsigned short', 'unsigned long',
+                                              'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t', 'int8_t', 'int16_t', 'int32_t', 'int64_t', 'size_t']:
+                    code.append(f"        cbor_encode_int(&map_encoder, data->{member_name}[i]);")
+                elif type_info['base_type'] in ['float', 'double']:
+                    code.append(f"        cbor_encode_float(&map_encoder, data->{member_name}[i]);")
+                elif type_info['base_type'] in ['_Bool', 'bool']:
+                    code.append(f"        cbor_encode_boolean(&map_encoder, data->{member_name}[i]);")
+                else:
+                    code.append(f"        // WARNING: Unhandled array element type '{type_info['base_type']}' for member '{member_name}[i]'")
+                code.append(f"    }}")
+        elif type_info['type'] == 'primitive':
             if type_info['base_type'] in ['int', 'short', 'long', 'unsigned int', 'unsigned short', 'unsigned long',
                                           'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t', 'int8_t', 'int16_t', 'int32_t', 'int64_t', 'size_t']:
                 code.append(f"    cbor_encode_int(&map_encoder, data->{member_name});")
@@ -246,8 +263,6 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
                 code.append(f"    cbor_encode_int(&map_encoder, data->{member_name}); // Encoding char as int")
             else:
                 code.append(f"    // WARNING: Unhandled primitive type '{type_info['base_type']}' for member '{member_name}'")
-        elif type_info['type'] == 'char_array':
-            code.append(f"    cbor_encode_text_string(&map_encoder, data->{member_name}, strlen(data->{member_name}));")
         elif type_info['type'] == 'pointer' and type_info['base_type'] == 'char':
             # Check for NULL pointer before dereferencing strlen
             code.append(f"    if (data->{member_name}) {{")
@@ -258,21 +273,6 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
         elif type_info['type'] == 'struct':
             nested_struct_name = type_info['base_type']
             code.append(f"    cbor_encode_{nested_struct_name}(&map_encoder, &data->{member_name});")
-        elif type_info['is_array'] and type_info['array_len'] is not None:
-            # Handle arrays of primitive types (e.g., int scores[5])
-            code.append(f"    cbor_encode_array_start(&map_encoder, &map_encoder, {type_info['array_len']});")
-            code.append(f"    for (size_t i = 0; i < {type_info['array_len']}; ++i) {{")
-            # Assuming array elements are primitive for simplicity
-            if type_info['base_type'] in ['int', 'short', 'long', 'unsigned int', 'unsigned short', 'unsigned long',
-                                          'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t', 'int8_t', 'int16_t', 'int32_t', 'int64_t', 'size_t']:
-                code.append(f"        cbor_encode_int(&map_encoder, data->{member_name}[i]);")
-            elif type_info['base_type'] in ['float', 'double']:
-                code.append(f"        cbor_encode_float(&map_encoder, data->{member_name}[i]);")
-            elif type_info['base_type'] in ['_Bool', 'bool']:
-                code.append(f"        cbor_encode_boolean(&map_encoder, data->{member_name}[i]);")
-            else:
-                code.append(f"        // WARNING: Unhandled array element type '{type_info['base_type']}' for member '{member_name}[i]'")
-            code.append(f"    }}")
         else:
             code.append(f"    // WARNING: Unhandled type for member '{member_name}'")
 
