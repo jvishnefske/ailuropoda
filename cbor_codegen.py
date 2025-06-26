@@ -180,8 +180,9 @@ def _extract_base_type_info(type_node, file_ast):
             is_pointer = 1  # Treat as a pointer to void
             break
         elif isinstance(current_node, c_ast.IdentifierType):
-            if "bool" in current_node.names:
-                base_type_names = ["bool"]
+            # Check for both 'bool' and '_Bool' (which 'bool' often expands to from stdbool.h)
+            if "bool" in current_node.names or "_Bool" in current_node.names:
+                base_type_names = ["bool"]  # Standardize to "bool" for internal logic
             else:
                 base_type_names = current_node.names
             break
@@ -840,8 +841,6 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
     source_code.append(f"    return true;")
     source_code.append(f"}}")
     source_code.append("")
-
-    return "\n".join(header_code), "\n".join(source_code)
 
 
 def main():
