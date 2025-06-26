@@ -1,56 +1,78 @@
-# CBOR Code Generator for C Structs
+# 📦 cbor-from-c: Automate CBOR for C Structs
 
-This repository contains `cbor_codegen.py`, a Python script designed to automate the generation of C code for encoding and decoding C structs into Concise Binary Object Representation (CBOR) format, leveraging the [TinyCBOR](https://github.com/intel/tinycbor) library.
+## ✨ Tired of writing tedious, error-prone boilerplate C code for CBOR serialization and deserialization?
 
-## Intention
+**`cbor-from-c`** is your solution! This powerful Python tool automatically generates robust C functions to encode and decode your C structs into Concise Binary Object Representation (CBOR), seamlessly integrating with the TinyCBOR library.
 
-Manually writing CBOR serialization and deserialization code for complex C data structures can be tedious, error-prone, and time-consuming. This script aims to eliminate this boilerplate by automatically generating the necessary C functions based on your existing C header file definitions.
+---
 
-## Goals
+## 🚀 Why `cbor-from-c`?
 
-The primary goals of `cbor_codegen.py` are:
+Manually handling CBOR for complex C data structures is a time sink. `cbor-from-c` eliminates this pain, letting you focus on your core logic while it handles the serialization boilerplate.
 
-*   **Automate Boilerplate**: Generate `encode_MyStruct()` and `decode_MyStruct()` functions for each `struct` defined in a given C header file.
-*   **Integrate with TinyCBOR**: Produce C code that seamlessly uses the `CborEncoder` and `CborValue` APIs from the TinyCBOR library.
-*   **Support Common C Types**: Handle a variety of C data types, including:
+### Key Features:
+
+*   **Automated Boilerplate**: Generates `encode_MyStruct()` and `decode_MyStruct()` functions for each `struct` in your C header files.
+*   **TinyCBOR Integration**: Produces C code fully compatible with the `CborEncoder` and `CborValue` APIs from the [TinyCBOR](https://github.com/intel/tinycbor) library.
+*   **Comprehensive Type Support**: Handles a wide range of C types:
     *   Basic integers (`int`, `uint64_t`, `char`, etc.)
     *   Floating-point numbers (`float`, `double`)
     *   Booleans (`bool`)
-    *   Fixed-size character arrays (e.g., `char name[64]`) as CBOR text strings.
-    *   Character pointers (e.g., `char* email`, `const char* notes`) as CBOR text strings.
+    *   Fixed-size character arrays (`char name[64]`) as CBOR text strings.
+    *   Character pointers (`char* email`, `const char* notes`) as CBOR text strings.
     *   Nested structs.
     *   Fixed-size arrays of basic types or nested structs.
-*   **Simplify Development**: Allow developers to focus on defining their data structures in C headers, and let the script handle the CBOR serialization logic.
+*   **Ready-to-Use Output**: Generates a dedicated output directory containing:
+    *   `cbor_generated.h` and `cbor_generated.c` with your encode/decode functions.
+    *   A `CMakeLists.txt` file to easily compile the generated code and link against TinyCBOR.
+    *   *(Future/Optional)* Helper functions for `cbor2json` and `json2cbor` conversion, simplifying data inspection and interoperability.
+*   **Simplified Development**: Define your data structures in C headers, and let `cbor-from-c` handle the rest!
 
-## How It Works
+---
 
-The `cbor_codegen.py` script uses `pycparser` to parse a C header file. It then traverses the Abstract Syntax Tree (AST) to identify `struct` definitions and their members. For each `struct`, it generates corresponding C functions:
+## 🛠️ How It Works
 
-*   `bool encode_StructName(const struct StructName* data, CborEncoder* encoder);`
-*   `bool decode_StructName(struct StructName* data, CborValue* it);`
+`cbor-from-c` leverages `pycparser` to parse your C header file's Abstract Syntax Tree (AST). It identifies `struct` definitions and their members, then intelligently generates the corresponding C encoding and decoding functions.
 
-These generated functions are written to `cbor_generated.h` and `cbor_generated.c` files, which can then be compiled and linked with your application and the TinyCBOR library.
+---
 
-## Usage
+## 📦 Installation
 
-1.  **Install `pycparser`**:
+```bash
+pip install pycparser
+# Or, if you prefer uvx for isolated environments:
+uvx pip install pycparser
+```
+
+## 🚀 Usage
+
+1.  **Run the script**:
     ```bash
-    pip install pycparser
-    ```
-2.  **Run the script**:
-    ```bash
-    python cbor_codegen.py <your_header_file.h> [--output-dir <output_directory>]
+    python src/cbor_codegen.py <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
     ```
     Example:
     ```bash
-    python cbor_codegen.py my_data.h --output-dir ./generated_code
+    # Generate CBOR code for my_data.h into the 'generated_cbor' directory
+    python src/cbor_codegen.py tests/my_data.h --output-dir ./generated_cbor
+
+    # Using uvx for a clean execution environment:
+    uvx python src/cbor_codegen.py tests/my_data.h --output-dir ./generated_cbor
     ```
 
-This will create `cbor_generated.h` and `cbor_generated.c` in the specified output directory (or the current directory by default).
+    This will create a directory (e.g., `generated_cbor`) containing `cbor_generated.h`, `cbor_generated.c`, and a `CMakeLists.txt` file.
 
-## Assumptions and Limitations
+2.  **Integrate with your CMake project**:
+    Add the generated directory to your `CMakeLists.txt`:
+    ```cmake
+    add_subdirectory(generated_cbor)
+    target_link_libraries(your_app PRIVATE cbor_generated tinycbor)
+    ```
 
-*   **C Preprocessing**: For complex header files with many `#include` directives or macros, it's recommended to preprocess the header first (e.g., using `gcc -E your_header.h`) and then pass the preprocessed output to `cbor_codegen.py`.
+---
+
+## ⚠️ Assumptions and Limitations
+
+*   **C Preprocessing**: For complex header files with many `#include` directives or macros, it's recommended to preprocess the header first (e.g., using `gcc -E your_header.h`) and then pass the preprocessed output to `cbor-from-c`.
 *   **Memory Management for Pointers**: For `char*` and other pointer types during decoding, the generated C code **does not** perform dynamic memory allocation (`malloc`). It assumes that the pointer members in your struct are already pointing to sufficiently large, allocated buffers. You are responsible for managing this memory.
 *   **Unsupported C Constructs**:
     *   `union` types are not supported.
@@ -60,3 +82,13 @@ This will create `cbor_generated.h` and `cbor_generated.c` in the specified outp
 *   **Error Handling**: The generated C functions return `false` on any CBOR encoding/decoding error.
 *   **CBOR Map Keys**: Struct member names are used directly as CBOR map keys (text strings).
 *   **Anonymous Structs**: Anonymous struct definitions that are not part of a `typedef` or a named member are skipped.
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Feel free to open issues or pull requests on our GitHub repository: [jvishnefske/cbor-from-c](https://github.com/jvishnefske/cbor-from-c)
+
+## 📄 License
+
+
