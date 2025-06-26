@@ -1,0 +1,16 @@
+[project]
+name = "cbor-from-c"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cbor2>=5.6.5",
+    "pycparser>=2.22",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "pytest>=8.4.1",
+]
