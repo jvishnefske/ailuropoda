@@ -52,6 +52,7 @@ def parse_c_string(c_code, cpp_path=None, cpp_args=None):
 def _find_struct(struct_name, ast):
     """
     Finds a struct definition by name in the AST.
+    This function should NOT modify the AST.
     """
     for ext in ast.ext:
         if isinstance(ext, c_ast.Decl) and isinstance(ext.type, c_ast.Struct) and ext.type.name == struct_name:
@@ -59,14 +60,9 @@ def _find_struct(struct_name, ast):
         elif isinstance(ext, c_ast.Typedef):
             # Check if typedef points to a struct with the given name
             if isinstance(ext.type, c_ast.TypeDecl) and isinstance(ext.type.type, c_ast.Struct):
-                if ext.type.type.name == struct_name:
-                    return ext.type.type
-                # Handle anonymous structs typedef'd with the struct_name
-                if ext.name == struct_name and ext.type.type.name is None:
-                    # This is the case: typedef struct { ... } StructName;
-                    # We need to return the anonymous struct, but also ensure it carries the typedef name
-                    # for later processing.
-                    ext.type.type.name = struct_name # Assign the typedef name to the anonymous struct
+                # If it's an anonymous struct typedef'd with struct_name, return the struct node.
+                # The name will be handled by TypedefResolver when it's used.
+                if ext.name == struct_name:
                     return ext.type.type
     return None
 
@@ -275,20 +271,24 @@ def main():
         if isinstance(ext, c_ast.Decl) and isinstance(ext.type, c_ast.Struct):
             if ext.type.name: # Only process named structs
                 struct_definitions[ext.type.name] = ext.type
+            else: # Anonymous struct declared directly, e.g., `struct { int x; } anon_var;`
+                logger.warning(f"Skipping anonymous struct declaration without a name: {ext.name}")
         elif isinstance(ext, c_ast.Typedef):
             # Handle typedefs that define structs, e.g., `typedef struct { int x; } Point;`
             if isinstance(ext.type, c_ast.TypeDecl) and isinstance(ext.type.type, c_ast.Struct):
                 if ext.name: # Ensure the typedef has a name
-                    # Assign the typedef name to the anonymous struct for consistent processing
-                    if ext.type.type.name is None:
-                        ext.type.type.name = ext.name
-                    struct_definitions[ext.name] = ext.type.type
+                    # Create a deep copy of the anonymous struct node and assign the typedef name to it.
+                    # This ensures the struct_definitions map contains properly named structs
+                    # without modifying the original AST, which is used by TypedefResolver.
+                    named_struct_node = copy.deepcopy(ext.type.type)
+                    if named_struct_node.name is None:
+                        named_struct_node.name = ext.name
+                    struct_definitions[ext.name] = named_struct_node
                 else:
                     logger.warning(f"Skipping anonymous typedef struct without a name.")
             # Also handle typedefs of already named structs, e.g., `typedef struct MyStruct MyStruct_t;`
             elif isinstance(ext.type, c_ast.TypeDecl) and isinstance(ext.type.type, c_ast.IdentifierType):
-                # This is a typedef of an existing type, not a new struct definition
-                pass # Handled by _expand_in_place later
+                pass # These are handled by TypedefResolver during member expansion
             else:
                 logger.info(f"Skipping typedef of type {type(ext.type.type).__name__} named '{ext.name}'.")
         else:
