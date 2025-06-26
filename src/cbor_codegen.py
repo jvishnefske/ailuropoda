@@ -134,15 +134,12 @@ def _expand_in_place(struct_node, ast):
     """
     Expands a struct definition in-place by resolving typedefs and nested structs.
     This function modifies the struct_node directly.
-    (Placeholder - actual implementation would be here)
     """
     if not struct_node.decls:
         return # Nothing to expand if no declarations
 
-    expanded_decls = []
     for decl in struct_node.decls:
         if isinstance(decl, c_ast.Decl):
-            member_name = decl.name
             type_info = _extract_base_type_info(decl.type, ast)
             
             # If the member is a struct, ensure its definition is available
@@ -157,24 +154,15 @@ def _expand_in_place(struct_node, ast):
                 if not type_info['is_pointer'] and nested_struct_def:
                     _expand_in_place(nested_struct_def, ast)
             
-            # Update the decl with expanded type info if necessary
-            # For this simplified example, we just ensure type_info is correctly extracted.
-            # The actual modification of decl.type for full expansion is complex and depends on pycparser AST manipulation.
-            # For now, we rely on _extract_base_type_info to give us the 'final' type name.
-            
-            # Store the extracted info directly on the decl object for easier access later
-            decl._type_info = type_info
-            expanded_decls.append(decl)
-        else:
-            expanded_decls.append(decl) # Keep non-Decl nodes as is
-
-    struct_node.decls = expanded_decls
+            # Removed: decl._type_info = type_info
+            # This line caused the AttributeError. The type_info will be re-extracted
+            # when generate_cbor_code_for_struct processes the members.
+        # else: keep non-Decl nodes as is (no change needed for them)
 
 
 def generate_cbor_code_for_struct(struct_node, ast):
     """
     Generates CBOR encoding/decoding code for a single struct.
-    (Placeholder - actual implementation would be here)
     """
     if not struct_node.name:
         return None # Skip anonymous structs
@@ -183,8 +171,8 @@ def generate_cbor_code_for_struct(struct_node, ast):
     if struct_node.decls:
         for decl in struct_node.decls:
             if isinstance(decl, c_ast.Decl):
-                # Use the pre-extracted type info from _expand_in_place
-                type_info = getattr(decl, '_type_info', _extract_base_type_info(decl.type, ast))
+                # Always call _extract_base_type_info here, no need for getattr check
+                type_info = _extract_base_type_info(decl.type, ast)
                 
                 # Skip function pointers
                 if isinstance(decl.type, c_ast.FuncDecl):
@@ -214,25 +202,27 @@ def generate_cbor_code_for_struct(struct_node, ast):
 
 
 # Modify the main function
-def main():
+def main(args=None): # Added args parameter for easier testing
     parser = argparse.ArgumentParser(description="Generate CBOR encoding/decoding functions for C structs.")
     parser.add_argument("input_header", help="Path to the C header file containing struct definitions.")
     parser.add_argument("--output-dir", required=True, help="Directory to output the generated C, H, and CMake files.")
     parser.add_argument("--cpp-path", default="gcc", help="Path to the C preprocessor (e.g., 'clang', 'gcc').")
     parser.add_argument("--cpp-args", nargs='*', default=['-E'],
                         help="Arguments to pass to the C preprocessor (e.g., '-I/path/to/includes').")
-    args = parser.parse_args()
+    
+    # Parse args, either from sys.argv or from the provided args list (for testing)
+    parsed_args = parser.parse_args(args)
 
-    output_dir = args.output_dir
+    output_dir = parsed_args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
     # Read the input header file
-    with open(args.input_header, 'r') as f:
+    with open(parsed_args.input_header, 'r') as f:
         c_code_string = f.read()
 
     # Parse the C code into an AST
-    logger.info(f"Parsing C header: {args.input_header}")
-    file_ast = parse_c_string(c_code_string, cpp_path=args.cpp_path, cpp_args=args.cpp_args)
+    logger.info(f"Parsing C header: {parsed_args.input_header}")
+    file_ast = parse_c_string(c_code_string, cpp_path=parsed_args.cpp_path, cpp_args=parsed_args.cpp_args)
 
     # Collect generated code for all structs
     all_struct_c_implementations = []
@@ -296,7 +286,7 @@ def main():
     rendered_cmake = cmake_template.render(
         generated_library_name="cbor_generated",
         generated_c_file_name="cbor_generated.c",
-        input_header_path=os.path.abspath(args.input_header), # Pass full path to input header
+        input_header_path=os.path.abspath(parsed_args.input_header), # Pass full path to input header
         output_dir_path=os.path.abspath(output_dir) # Pass full path to output dir
     )
     with open(os.path.join(output_dir, 'CMakeLists.txt'), 'w') as f:

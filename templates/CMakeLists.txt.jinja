@@ -1,70 +1,23 @@
-cmake_minimum_required(VERSION 3.14)
-project(cbor_project C CXX) # Add CXX for potential future use, and ensure C is enabled
+# This CMakeLists.txt is generated into the output directory (e.g., build_path in tests).
+# It defines a library for the generated CBOR code and links against tinycbor.
+# It assumes tinycbor is already available in the CMake project where this is included.
 
-include(FetchContent)
+# Add the generated C file to a library
+add_library({{ generated_library_name }} STATIC {{ generated_c_file_name }})
 
-FetchContent_Declare(
-  tinycbor
-  URL https://github.com/intel/tinycbor/archive/refs/tags/v0.6.1.tar.gz
+# Link against tinycbor.
+# We assume tinycbor is already configured and available as a target.
+# If tinycbor is fetched via FetchContent in a parent CMakeLists.txt,
+# its targets will be available.
+target_link_libraries({{ generated_library_name }} PRIVATE tinycbor)
+
+# Add include directories for the generated header and tinycbor
+target_include_directories({{ generated_library_name }} PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR} # For cbor_generated.h (which is in the same dir as this CMakeLists.txt)
+    $<TARGET_PROPERTY:tinycbor,INTERFACE_INCLUDE_DIRECTORIES> # For tinycbor headers
 )
 
-FetchContent_MakeAvailable(tinycbor)
-
-# Find uv executable directly, assuming it's in PATH when CMake is run
-find_program(UV_EXECUTABLE uv REQUIRED
-    DOC "Path to the uv executable"
+# Set properties for the generated library
+set_target_properties({{ generated_library_name }} PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
 )
-
-# Find Python3 interpreter, which will be used to run cbor_codegen.py
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-
-# Define the virtual environment directory for CMake's use
-set(VENV_DIR "${CMAKE_CURRENT_BINARY_DIR}/.venv")
-
-# Command to create and update the uv virtual environment and install pycparser
-# Removed 'my_data.h' as a dependency for venv setup, and corrected cbor_codegen.py path
-add_custom_command(
-    OUTPUT ${VENV_DIR}/bin/python # A sentinel file for the venv
-    COMMAND ${UV_EXECUTABLE} venv ${VENV_DIR}
-    COMMAND ${VENV_DIR}/bin/uv pip install pycparser
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Setting up Python virtual environment with uv and installing pycparser for CMake"
-    DEPENDS src/cbor_codegen.py # Only depends on the script itself if its presence is needed for venv setup
-    VERBATIM
-)
-add_custom_target(uv_venv_setup ALL DEPENDS ${VENV_DIR}/bin/python)
-
-# Custom command to run the CBOR code generator
-# Corrected paths for cbor_codegen.py and my_data.h
-add_custom_command(
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/cbor_generated.h
-           ${CMAKE_CURRENT_BINARY_DIR}/cbor_generated.c
-    COMMAND ${VENV_DIR}/bin/python ${CMAKE_CURRENT_SOURCE_DIR}/src/cbor_codegen.py
-            ${CMAKE_CURRENT_SOURCE_DIR}/tests/my_data.h
-            --output-dir ${CMAKE_CURRENT_BINARY_DIR}
-            --cpp-path ${CMAKE_C_COMPILER} # Use the C compiler as preprocessor
-            --cpp-args "-I${CMAKE_CURRENT_SOURCE_DIR}/tests" # Include tests/ directory for my_data.h
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/cbor_codegen.py ${CMAKE_CURRENT_SOURCE_DIR}/tests/my_data.h uv_venv_setup # Depend on the venv setup
-    COMMENT "Generating CBOR encode/decode code for my_data.h"
-    VERBATIM
-)
-add_custom_target(cbor_codegen_target ALL
-    DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/cbor_generated.h
-            ${CMAKE_CURRENT_BINARY_DIR}/cbor_generated.c
-)
-
-# Add your source files here
-# Assuming my_data.c is in the project root, if it's in tests/ it needs to be updated here too.
-add_executable(my_app
-    my_data.c
-    ${CMAKE_CURRENT_BINARY_DIR}/cbor_generated.c
-)
-
-# Link against tinycbor
-target_link_libraries(my_app PRIVATE tinycbor)
-
-# Add include directory for generated header
-target_include_directories(my_app PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-
-# Ensure code generation runs before compilation
-add_dependencies(my_app cbor_codegen_target)
