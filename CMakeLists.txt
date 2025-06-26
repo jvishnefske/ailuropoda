@@ -12,6 +12,17 @@ FetchContent_MakeAvailable(tinycbor)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+# Command to ensure uv is installed for the Python interpreter CMake uses
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/.uv_installed_marker # A sentinel file
+    COMMAND ${Python3_EXECUTABLE} -m pip install uv
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Ensuring uv is installed for CMake's Python interpreter"
+    VERBATIM
+)
+add_custom_target(ensure_uv_installed ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/.uv_installed_marker)
+
+
 # Define the virtual environment directory
 set(VENV_DIR "${CMAKE_CURRENT_BINARY_DIR}/.venv")
 
@@ -22,6 +33,7 @@ add_custom_command(
     COMMAND ${VENV_DIR}/bin/uv pip install pycparser
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Setting up Python virtual environment with uv and installing pycparser"
+    DEPENDS cbor_codegen.py my_data.h ensure_uv_installed # Depend on uv being installed
     VERBATIM
 )
 add_custom_target(uv_venv_setup ALL DEPENDS ${VENV_DIR}/bin/python)

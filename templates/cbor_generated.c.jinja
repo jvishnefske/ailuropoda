@@ -1,0 +1,235 @@
+#include "cbor_generated.h"
+#include <string.h> // For strlen, memcpy
+#include <stdio.h>  // For debugging, if needed
+
+// Helper to encode a text string (char array or char*)
+static bool encode_text_string(const char* str, CborEncoder* encoder) {
+    if (!str) {
+        return false; // Or encode as CBOR null, depending on desired behavior
+    }
+    return cbor_encode_text_string(encoder, str, strlen(str)) == CborNoError;
+}
+
+// Helper to decode a text string into a fixed-size buffer
+static bool decode_text_string(char* buffer, size_t buffer_size, CborValue* it) {
+    if (cbor_value_get_type(it) != CborTextStringType) {
+        return false;
+    }
+    size_t len;
+    CborError err = cbor_value_get_string_length(it, &len);
+    if (err != CborNoError) return false;
+
+    if (len >= buffer_size) { // Check for buffer overflow
+        return false;
+    }
+
+    err = cbor_value_copy_text_string(it, buffer, &len, NULL);
+    if (err != CborNoError) return false;
+    buffer[len] = '\0'; // Null-terminate
+    cbor_value_advance(it);
+    return true;
+}
+
+// Helper to decode a text string into a char* (assumes buffer is pre-allocated)
+static bool decode_char_ptr(char** ptr, size_t max_len, CborValue* it) {
+    if (cbor_value_get_type(it) != CborTextStringType) {
+        return false;
+    }
+    size_t len;
+    CborError err = cbor_value_get_string_length(it, &len);
+    if (err != CborNoError) return false;
+
+    if (len >= max_len) { // Check for buffer overflow
+        return false;
+    }
+    
+    // Assuming *ptr points to an already allocated buffer of at least max_len
+    err = cbor_value_copy_text_string(it, *ptr, &len, NULL);
+    if (err != CborNoError) return false;
+    (*ptr)[len] = '\0'; // Null-terminate
+    cbor_value_advance(it);
+    return true;
+}
+
+
+{% for struct in structs %}
+bool encode_{{ struct.name }}(const struct {{ struct.name }}* data, CborEncoder* encoder) {
+    if (!data) return false;
+    CborError err;
+    CborEncoder map_encoder;
+
+    err = cbor_encoder_create_map(encoder, &map_encoder, {{ struct.members|length }});
+    if (err != CborNoError) return false;
+
+    {% for member in struct.members %}
+    // Member: {{ member.name }} (Type: {{ member.type_name }})
+    err = cbor_encode_text_string(&map_encoder, "{{ member.name }}", strlen("{{ member.name }}"));
+    if (err != CborNoError) return false;
+
+    {% if member.is_struct %}
+        {% if member.is_pointer %}
+    if (data->{{ member.name }}) {
+        if (!encode_{{ member.type_name }}(data->{{ member.name }}, &map_encoder)) return false;
+    } else {
+        err = cbor_encode_null(&map_encoder); // Encode null if pointer is NULL
+        if (err != CborNoError) return false;
+    }
+        {% else %}
+    if (!encode_{{ member.type_name }}(&data->{{ member.name }}, &map_encoder)) return false;
+        {% endif %}
+    {% elif member.is_pointer and member.type_name == 'char' %}
+    if (!encode_text_string(data->{{ member.name }}, &map_encoder)) return false;
+    {% elif member.array_size and member.type_name == 'char' %}
+    if (!encode_text_string(data->{{ member.name }}, &map_encoder)) return false;
+    {% elif member.array_size %}
+    // Array of {{ member.type_name }}
+    err = cbor_encoder_create_array(&map_encoder, &map_encoder, {{ member.array_size }});
+    if (err != CborNoError) return false;
+    for (size_t i = 0; i < {{ member.array_size }}; ++i) {
+        {% if member.is_struct %}
+        if (!encode_{{ member.type_name }}(&data->{{ member.name }}[i], &map_encoder)) return false;
+        {% else %}
+        err = cbor_encode_int(&map_encoder, data->{{ member.name }}[i]); // Assuming integer type
+        if (err != CborNoError) return false;
+        {% endif %}
+    }
+    err = cbor_encoder_close_container(&map_encoder, &map_encoder);
+    if (err != CborNoError) return false;
+    {% else %}
+    {% if member.type_name == 'int' or member.type_name == 'long' or member.type_name == 'short' or member.type_name == 'char' %}
+    err = cbor_encode_int(&map_encoder, data->{{ member.name }});
+    {% elif member.type_name == 'unsigned int' or member.type_name == 'unsigned long' or member.type_name == 'unsigned short' or member.type_name == 'unsigned char' or member.type_name == 'uint8_t' or member.type_name == 'uint16_t' or member.type_name == 'uint32_t' or member.type_name == 'uint64_t' %}
+    err = cbor_encode_uint(&map_encoder, data->{{ member.name }});
+    {% elif member.type_name == 'float' %}
+    err = cbor_encode_float(&map_encoder, data->{{ member.name }});
+    {% elif member.type_name == 'double' %}
+    err = cbor_encode_double(&map_encoder, data->{{ member.name }});
+    {% elif member.type_name == 'bool' or member.type_name == '_Bool' %}
+    err = cbor_encode_boolean(&map_encoder, data->{{ member.name }});
+    {% else %}
+    // Unsupported type for encoding: {{ member.type_name }} {{ member.name }}
+    #error "Unsupported type for encoding: {{ member.type_name }} {{ member.name }}"
+    {% endif %}
+    if (err != CborNoError) return false;
+    {% endif %}
+    {% endfor %}
+
+    err = cbor_encoder_close_container(encoder, &map_encoder);
+    return err == CborNoError;
+}
+
+bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
+    if (!data) return false;
+    CborError err;
+    CborValue map_it;
+
+    if (cbor_value_get_type(it) != CborMapType) return false;
+    err = cbor_value_enter_container(it, &map_it);
+    if (err != CborNoError) return false;
+
+    while (!cbor_value_at_end(&map_it)) {
+        if (cbor_value_get_type(&map_it) != CborTextStringType) return false;
+        
+        char* key;
+        size_t key_len;
+        err = cbor_value_copy_text_string(&map_it, NULL, &key_len, &key); // Get length and pointer
+        if (err != CborNoError) return false;
+        cbor_value_advance(&map_it); // Advance past the key
+
+        {% for member in struct.members %}
+        if (strncmp(key, "{{ member.name }}", key_len) == 0 && strlen("{{ member.name }}") == key_len) {
+            {% if member.is_struct %}
+                {% if member.is_pointer %}
+            // For pointer to struct, assume data->{{ member.name }} is pre-allocated
+            if (cbor_value_get_type(&map_it) == CborNullType) {
+                data->{{ member.name }} = NULL;
+                cbor_value_advance(&map_it);
+            } else {
+                if (!data->{{ member.name }}) return false; // Buffer not allocated
+                if (!decode_{{ member.type_name }}(data->{{ member.name }}, &map_it)) return false;
+            }
+                {% else %}
+            if (!decode_{{ member.type_name }}(&data->{{ member.name }}, &map_it)) return false;
+                {% endif %}
+            {% elif member.is_pointer and member.type_name == 'char' %}
+            // For char*, assume data->{{ member.name }} is pre-allocated with sufficient size
+            // Max length for char* should be passed or known. Using a placeholder MAX_STRING_LEN
+            // This is a limitation: user must ensure buffer is large enough.
+            if (!decode_char_ptr(&data->{{ member.name }}, 256, &map_it)) return false; // TODO: Define MAX_STRING_LEN
+            {% elif member.array_size and member.type_name == 'char' %}
+            if (!decode_text_string(data->{{ member.name }}, sizeof(data->{{ member.name }}), &map_it)) return false;
+            {% elif member.array_size %}
+            // Array of {{ member.type_name }}
+            if (cbor_value_get_type(&map_it) != CborArrayType) return false;
+            CborValue array_it;
+            err = cbor_value_enter_container(&map_it, &array_it);
+            if (err != CborNoError) return false;
+            size_t array_len;
+            err = cbor_value_get_array_length(&array_it, &array_len);
+            if (err != CborNoError || array_len > {{ member.array_size }}) return false; // Check bounds
+
+            for (size_t i = 0; i < array_len; ++i) {
+                {% if member.is_struct %}
+                if (!decode_{{ member.type_name }}(&data->{{ member.name }}[i], &array_it)) return false;
+                {% else %}
+                {% if member.type_name == 'int' or member.type_name == 'long' or member.type_name == 'short' or member.type_name == 'char' %}
+                if (cbor_value_get_type(&array_it) != CborIntegerType) return false;
+                err = cbor_value_get_int(&array_it, (int*)&data->{{ member.name }}[i]);
+                {% elif member.type_name == 'unsigned int' or member.type_name == 'unsigned long' or member.type_name == 'unsigned short' or member.type_name == 'unsigned char' or member.type_name == 'uint8_t' or member.type_name == 'uint16_t' or member.type_name == 'uint32_t' or member.type_name == 'uint64_t' %}
+                if (cbor_value_get_type(&array_it) != CborIntegerType) return false;
+                err = cbor_value_get_uint64(&array_it, (uint64_t*)&data->{{ member.name }}[i]);
+                {% elif member.type_name == 'float' %}
+                if (cbor_value_get_type(&array_it) != CborFloatType && cbor_value_get_type(&array_it) != CborDoubleType) return false;
+                err = cbor_value_get_float(&array_it, &data->{{ member.name }}[i]);
+                {% elif member.type_name == 'double' %}
+                if (cbor_value_get_type(&array_it) != CborDoubleType && cbor_value_get_type(&array_it) != CborFloatType) return false;
+                err = cbor_value_get_double(&array_it, &data->{{ member.name }}[i]);
+                {% elif member.type_name == 'bool' or member.type_name == '_Bool' %}
+                if (cbor_value_get_type(&array_it) != CborBooleanType) return false;
+                err = cbor_value_get_boolean(&array_it, &data->{{ member.name }}[i]);
+                {% else %}
+                // Unsupported type for decoding in array: {{ member.type_name }} {{ member.name }}
+                #error "Unsupported type for decoding in array: {{ member.type_name }} {{ member.name }}"
+                {% endif %}
+                if (err != CborNoError) return false;
+                cbor_value_advance(&array_it);
+                {% endif %}
+            }
+            err = cbor_value_leave_container(&map_it, &array_it);
+            if (err != CborNoError) return false;
+            {% else %}
+            {% if member.type_name == 'int' or member.type_name == 'long' or member.type_name == 'short' or member.type_name == 'char' %}
+            if (cbor_value_get_type(&map_it) != CborIntegerType) return false;
+            err = cbor_value_get_int(&map_it, (int*)&data->{{ member.name }});
+            {% elif member.type_name == 'unsigned int' or member.type_name == 'unsigned long' or member.type_name == 'unsigned short' or member.type_name == 'unsigned char' or member.type_name == 'uint8_t' or member.type_name == 'uint16_t' or member.type_name == 'uint32_t' or member.type_name == 'uint64_t' %}
+            if (cbor_value_get_type(&map_it) != CborIntegerType) return false;
+            err = cbor_value_get_uint64(&map_it, (uint64_t*)&data->{{ member.name }});
+            {% elif member.type_name == 'float' %}
+            if (cbor_value_get_type(&map_it) != CborFloatType && cbor_value_get_type(&map_it) != CborDoubleType) return false;
+            err = cbor_value_get_float(&map_it, &data->{{ member.name }});
+            {% elif member.type_name == 'double' %}
+            if (cbor_value_get_type(&map_it) != CborDoubleType && cbor_value_get_type(&map_it) != CborFloatType) return false;
+            err = cbor_value_get_double(&map_it, &data->{{ member.name }});
+            {% elif member.type_name == 'bool' or member.type_name == '_Bool' %}
+            if (cbor_value_get_type(&map_it) != CborBooleanType) return false;
+            err = cbor_value_get_boolean(&map_it, &data->{{ member.name }});
+            {% else %}
+            // Unsupported type for decoding: {{ member.type_name }} {{ member.name }}
+            #error "Unsupported type for decoding: {{ member.type_name }} {{ member.name }}"
+            {% endif %}
+            if (err != CborNoError) return false;
+            cbor_value_advance(&map_it);
+            {% endif %}
+        }
+        {% endfor %}
+        else {
+            // Unknown key, skip it
+            cbor_value_advance(&map_it);
+            cbor_value_advance(&map_it);
+        }
+    }
+
+    err = cbor_value_leave_container(it, &map_it);
+    return err == CborNoError;
+}
+{% endfor %}

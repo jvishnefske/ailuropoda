@@ -1,0 +1,19 @@
+#ifndef CBOR_GENERATED_H
+#define CBOR_GENERATED_H
+
+#include <stdbool.h>
+#include <stdint.h>
+#include "tinycbor/cbor.h"
+
+// Forward declarations for structs
+{% for struct in structs %}
+struct {{ struct.name }};
+{% endfor %}
+
+// Encode/Decode function declarations
+{% for struct in structs %}
+bool encode_{{ struct.name }}(const struct {{ struct.name }}* data, CborEncoder* encoder);
+bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it);
+{% endfor %}
+
+#endif // CBOR_GENERATED_H

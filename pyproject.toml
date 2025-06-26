@@ -16,6 +16,7 @@ dev = [
     "coverage>=7.6.1",
     "cppyy>=3.5.0",
     "pytest>=8.3.5",
+    "uv>=0.1.0", # Added uv to dev dependencies
 ]
 
 [tool.pytest.ini_options]
