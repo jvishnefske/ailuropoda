@@ -21,3 +21,20 @@ target_include_directories({{ generated_library_name }} PUBLIC
 set_target_properties({{ generated_library_name }} PROPERTIES
     POSITION_INDEPENDENT_CODE ON
 )
+
+{% if test_harness_c_file_name and test_harness_executable_name %}
+# Add the test harness executable if specified
+add_executable({{ test_harness_executable_name }} {{ test_harness_c_file_name }})
+
+# Link the test harness against the generated CBOR library and tinycbor
+target_link_libraries({{ test_harness_executable_name }} PRIVATE
+    {{ generated_library_name }}
+    tinycbor
+)
+
+# Add include directories for the test harness
+target_include_directories({{ test_harness_executable_name }} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} # For cbor_generated.h
+    $<TARGET_PROPERTY:tinycbor,INTERFACE_INCLUDE_DIRECTORIES> # For tinycbor headers
+)
+{% endif %}
