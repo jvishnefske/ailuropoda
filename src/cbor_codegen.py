@@ -149,10 +149,12 @@ def _extract_base_type_info(type_node, file_ast):
                            '_Bool', 'bool', 'size_t',
                            'int8_t', 'int16_t', 'int32_t', 'int64_t',
                            'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t']
-        if base_type in primitive_types:
-            return {'type': 'primitive', 'base_type': base_type, 'is_array': is_array, 'array_len': array_len}
-        elif base_type == 'char' and is_array:
+        
+        # IMPORTANT: Check for char array BEFORE general primitive char
+        if base_type == 'char' and is_array:
             return {'type': 'char_array', 'base_type': 'char', 'is_array': is_array, 'array_len': array_len}
+        elif base_type in primitive_types:
+            return {'type': 'primitive', 'base_type': base_type, 'is_array': is_array, 'array_len': array_len}
         else:
             # Could be a typedef to a struct or another primitive
             typedef_node = _find_typedef(base_type, file_ast)
