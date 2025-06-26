@@ -13,22 +13,30 @@ def _find_struct(name, ast):
     Handles structs defined directly, or wrapped in Decl/Typedef nodes.
     """
     for node in ast.ext:
+        struct_node = None
         # Case 1: Direct struct definition (e.g., `struct MyStruct { ... };`)
-        if isinstance(node, c_ast.Struct) and node.name == name:
-            return node
+        if isinstance(node, c_ast.Struct):
+            struct_node = node
         # Case 2: Struct definition wrapped in a Decl (common for top-level structs)
         # e.g., `struct MyStruct { int x; };` might be parsed as Decl(type=TypeDecl(type=Struct(name='MyStruct', ...)))
         elif isinstance(node, c_ast.Decl) and \
              isinstance(node.type, c_ast.TypeDecl) and \
-             isinstance(node.type.type, c_ast.Struct) and \
-             node.type.type.name == name:
-            return node.type.type
+             isinstance(node.type.type, c_ast.Struct):
+            struct_node = node.type.type
         # Case 3: Struct definition within a Typedef (e.g., `typedef struct MyStruct { ... } MyStructTypedef;`)
         elif isinstance(node, c_ast.Typedef) and \
              isinstance(node.type, c_ast.TypeDecl) and \
-             isinstance(node.type.type, c_ast.Struct) and \
-             node.type.type.name == name:
-            return node.type.type
+             isinstance(node.type.type, c_ast.Struct):
+            struct_node = node.type.type
+        # Case 4: Struct definition wrapped in a Decl, but TypeDecl is skipped (e.g., Decl(type=Struct(...)))
+        elif isinstance(node, c_ast.Decl) and isinstance(node.type, c_ast.Struct):
+            struct_node = node.type
+        # Case 5: Struct definition within a Typedef, but TypeDecl is skipped (e.g., Typedef(type=Struct(...)))
+        elif isinstance(node, c_ast.Typedef) and isinstance(node.type, c_ast.Struct):
+            struct_node = node.type
+
+        if struct_node and struct_node.name == name:
+            return struct_node
     return None
 
 def _find_typedef(name, ast):
@@ -53,6 +61,8 @@ def _expand_in_place(node, file_ast):
             if typedef_node and isinstance(typedef_node.type, c_ast.TypeDecl):
                 # Replace the IdentifierType with the actual base type from typedef
                 node.type.type = typedef_node.type.type
+            elif typedef_node and isinstance(typedef_node.type, c_ast.Struct): # Handle typedef directly to struct
+                node.type.type = typedef_node.type
         # Handle nested struct definitions (anonymous or named inline)
         elif isinstance(node.type, c_ast.TypeDecl) and isinstance(node.type.type, c_ast.Struct):
             struct_name = node.type.type.name
@@ -67,6 +77,19 @@ def _expand_in_place(node, file_ast):
             elif node.type.type.decls: # Anonymous inline struct, expand its members
                 for decl in node.type.type.decls:
                     _expand_in_place(decl, file_ast)
+        # Handle case where Decl.type is directly Struct (no TypeDecl)
+        elif isinstance(node.type, c_ast.Struct):
+            struct_name = node.type.name
+            if struct_name:
+                struct_def = _find_struct(struct_name, file_ast)
+                if struct_def and struct_def.decls:
+                    node.type.decls = struct_def.decls
+                    for decl in node.type.decls:
+                        _expand_in_place(decl, file_ast)
+            elif node.type.decls: # Anonymous inline struct, expand its members
+                for decl in node.type.decls:
+                    _expand_in_place(decl, file_ast)
+
     # If the node itself is a struct (e.g., the top-level struct being processed)
     elif isinstance(node, c_ast.Struct) and node.decls:
         for decl in node.decls:
@@ -104,9 +127,14 @@ def _extract_base_type_info(type_node, file_ast):
            isinstance(type_node.type.type, c_ast.IdentifierType) and \
            type_node.type.type.names == ['char']:
             return {'type': 'pointer', 'base_type': 'char', 'is_array': is_array, 'array_len': array_len}
+        # Handle case where PtrDecl.type is directly IdentifierType (no TypeDecl)
+        elif isinstance(type_node.type, c_ast.IdentifierType) and \
+             type_node.type.names == ['char']:
+            return {'type': 'pointer', 'base_type': 'char', 'is_array': is_array, 'array_len': array_len}
         else:
-            # Generic pointer, treat as void* for now
-            return {'type': 'pointer', 'base_type': 'void', 'is_array': is_array, 'array_len': array_len}
+            # Generic pointer, recursively extract base type of the pointed-to type
+            base_info = _extract_base_type_info(type_node.type, file_ast)
+            return {'type': 'pointer', 'base_type': base_info['base_type'], 'is_array': is_array, 'array_len': array_len}
 
     # Handle TypeDecl (most common for variable declarations, e.g., int x;)
     if isinstance(type_node, c_ast.TypeDecl):
@@ -314,12 +342,18 @@ def main():
         # Also check if the node is a Decl or Typedef that contains a struct definition
         elif isinstance(node, (c_ast.Decl, c_ast.Typedef)):
             # Check if the type of the declaration/typedef is a struct
+            # This part needs to be careful to extract the actual struct node
+            struct_node_candidate = None
             if isinstance(node.type, c_ast.TypeDecl) and isinstance(node.type.type, c_ast.Struct) and node.type.type.name:
-                struct_node = node.type.type
-                logger.info(f"Found struct (via Decl/Typedef): {struct_node.name}")
-                generated_code, prototype = generate_cbor_code_for_struct(struct_node, file_ast)
+                struct_node_candidate = node.type.type
+            elif isinstance(node.type, c_ast.Struct) and node.type.name: # Added this case
+                struct_node_candidate = node.type
+
+            if struct_node_candidate:
+                logger.info(f"Found struct (via Decl/Typedef): {struct_node_candidate.name}")
+                generated_code, prototype = generate_cbor_code_for_struct(struct_node_candidate, file_ast)
                 if generated_code:
-                    output_c_filename = f"cbor_encode_{struct_node.name}.c"
+                    output_c_filename = f"cbor_encode_{struct_node_candidate.name}.c"
                     output_c_filepath = output_dir_path / output_c_filename
 
                     c_file_content = []
@@ -331,7 +365,7 @@ def main():
                     try:
                         with open(output_c_filepath, "w") as f:
                             f.write("\n".join(c_file_content))
-                        logger.info(f"Generated code for struct {struct_node.name} written to {output_c_filepath}")
+                        logger.info(f"Generated code for struct {struct_node_candidate.name} written to {output_c_filepath}")
                         generated_prototypes.append(prototype)
                     except IOError as e:
                         logger.error(f"Error writing to file {output_c_filepath}: {e}")
