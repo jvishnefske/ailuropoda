@@ -1,16 +1,8 @@
 [project]
-name = "cbor-from-c"
+name = "cbor-codegen-deps"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.12"
-dependencies = [
-    "cbor2>=5.6.5",
-    "pycparser>=2.22",
-]
+description = "Dependencies for CBOR code generation"
+requires-python = ">=3.8"
 
-[dependency-groups]
-dev = [
-    "black>=25.1.0",
-    "pytest>=8.4.1",
-]
+[dependencies]
+pycparser = ">=2.21"

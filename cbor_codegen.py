@@ -310,7 +310,7 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
                     "char" in member_type_info["base_type_names"]
                     and member_type_info["is_pointer"] == 1
                 ):
-                    # char* as null-terminated string
+                    # char* or const char* as null-terminated string
                     source_code.append(
                         f"        err = cbor_encode_text_stringz(&mapEncoder, data->{member_name});"
                     )
@@ -564,7 +564,9 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
                     "char" in member_type_info["base_type_names"]
                     and member_type_info["is_pointer"] == 1
                 ):
-                    # char* as null-terminated string
+                    # char* or const char* as null-terminated string
+                    # Note: For 'const char*', this assumes 'data->member_name' is a mutable buffer
+                    # or that the user will cast away const. This is a common pattern but requires care.
                     source_code.append(
                         f"                // WARNING: For char* members, memory for data->{member_name} must be allocated by caller."
                     )
@@ -582,7 +584,7 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
                         f"                if (err != CborNoError) return false;"
                     )
                     source_code.append(
-                        f"                err = cbor_value_copy_text_string(&mapIt, data->{member_name}, &actual_len_{member_name}, &mapIt);"
+                        f"                err = cbor_value_copy_text_string(&mapIt, (char*)data->{member_name}, &actual_len_{member_name}, &mapIt);"
                     )
                     source_code.append(
                         f"                if (err != CborNoError) return false;"

@@ -28,7 +28,7 @@ struct Person {
     uint64_t id;
     double balance;
     struct Address address; // Nested struct defined above
-    const char* notes; // Const char pointer (string) - requires manual memory management for decoding
+    char notes[256]; // Changed from const char* to char array for simpler codegen/decoding
     int* favorite_number; // Pointer to int - requires manual memory management for decoding
     // void (*callback_func)(); // Function pointer - will be skipped
 };
