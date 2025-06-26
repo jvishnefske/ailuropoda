@@ -544,28 +544,27 @@ def main():
     parser = argparse.ArgumentParser(description="Generate CBOR encode/decode C code for structs from a C header.")
     parser.add_argument("header_file", help="Path to the C header file.")
     parser.add_argument("--output-dir", default=".", help="Directory to output generated C files (default: current directory).")
+    parser.add_argument("--cpp-path", default="gcc", help="Path to the C preprocessor (e.g., 'gcc', 'clang').")
+    parser.add_argument("--cpp-args", default="", help="Additional arguments to pass to the C preprocessor (e.g., '-I/path/to/includes').")
     args = parser.parse_args()
 
     header_file_path = args.header_file
     output_dir = args.output_dir
+    cpp_path = args.cpp_path
+    cpp_args = args.cpp_args.split() if args.cpp_args else []
 
     if not os.path.exists(header_file_path):
         print(f"Error: Header file '{header_file_path}' not found.", file=sys.stderr)
         sys.exit(1)
-
-    # Read the C header file content
-    with open(header_file_path, 'r') as f:
-        c_code = f.read()
     
-    # Add a dummy main function to ensure all declarations are parsed as external
-    # This is a common trick for pycparser when parsing header-like files
-    # that might contain only declarations.
-    c_code += "\nvoid __dummy_main__() {}\n"
-    
-    # Parse the C code
-    parser = c_parser.CParser()
+    # Parse the C code using the preprocessor
     try:
-        file_ast = parser.parse(c_code, filename=header_file_path)
+        # pycparser.parse_file automatically runs the C preprocessor
+        # and then parses the preprocessed output.
+        file_ast = parse_file(header_file_path, 
+                              use_cpp=True, 
+                              cpp_path=cpp_path, 
+                              cpp_args=['-E'] + cpp_args)
     except c_parser.ParseError as e:
         print(f"Error parsing C header: {e}", file=sys.stderr)
         sys.exit(1)
