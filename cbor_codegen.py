@@ -119,6 +119,8 @@ def _get_c_type_string_for_cast(c_type_node):
     elif isinstance(c_type_node, c_ast.FuncDecl):
         return "void"
     elif isinstance(c_type_node, c_ast.IdentifierType):
+        if "bool" in c_type_node.names:
+            return "bool"
         return " ".join(c_type_node.names)
     elif isinstance(c_type_node, c_ast.Struct):
         return f"struct {c_type_node.name}" if c_type_node.name else "struct"
@@ -178,7 +180,10 @@ def _extract_base_type_info(type_node, file_ast):
             is_pointer = 1  # Treat as a pointer to void
             break
         elif isinstance(current_node, c_ast.IdentifierType):
-            base_type_names = current_node.names
+            if "bool" in current_node.names:
+                base_type_names = ["bool"]
+            else:
+                base_type_names = current_node.names
             break
         elif isinstance(current_node, c_ast.Struct):
             is_struct = True
@@ -434,6 +439,12 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
             source_code.append(
                 f"    if (!encode_{member_type_info['struct_name']}(&data->{member_name}, &mapEncoder)) return false;"
             )
+        elif "bool" in member_type_info["base_type_names"]:
+            # Basic type: bool
+            source_code.append(
+                f"    err = cbor_encode_boolean(&mapEncoder, data->{member_name});"
+            )
+            source_code.append(f"    if (err != CborNoError) return false;")
         else:
             # Basic type
             cast_type = _get_c_type_string_for_cast(
@@ -458,10 +469,6 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
             elif "double" in member_type_info["base_type_names"]:
                 source_code.append(
                     f"    err = cbor_encode_double(&mapEncoder, data->{member_name});"
-                )
-            elif "bool" in member_type_info["base_type_names"]:
-                source_code.append(
-                    f"    err = cbor_encode_boolean(&mapEncoder, data->{member_name});"
                 )
             else:
                 print(
@@ -695,7 +702,8 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
                     ):
                         element_type_node = element_type_node.type
                     else:
-                        break
+                        break  # Should not happen if array_dims is correct
+
                 element_type_info = _extract_base_type_info(element_type_node, file_ast)
                 cast_type = _get_c_type_string_for_cast(
                     element_type_info["original_type_node"]
@@ -764,6 +772,12 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
             source_code.append(
                 f"            if (!decode_{member_type_info['struct_name']}(data->{member_name}, &mapIt)) return false;"
             )
+        elif "bool" in member_type_info["base_type_names"]:
+            # Basic type: bool
+            source_code.append(
+                f"            err = cbor_value_get_boolean(&mapIt, &data->{member_name});"
+            )
+            source_code.append(f"            if (err != CborNoError) return false;")
         else:
             # Basic type
             cast_type = _get_c_type_string_for_cast(
@@ -802,10 +816,6 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
             elif "double" in member_type_info["base_type_names"]:
                 source_code.append(
                     f"            err = cbor_value_get_double(&mapIt, &data->{member_name});"
-                )
-            elif "bool" in member_type_info["base_type_names"]:
-                source_code.append(
-                    f"            err = cbor_value_get_boolean(&mapIt, &data->{member_name});"
                 )
             else:
                 print(
