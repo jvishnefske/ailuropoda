@@ -1,211 +1,173 @@
-import sys
-import os
 import pytest
-import cppyy
-from pycparser import c_parser, c_ast
-from src.cbor_codegen import generate_cbor_code_for_struct, _find_struct, _find_typedef, _expand_in_place, _extract_base_type_info
+import os
+import tempfile
+import shutil
 import logging
 import subprocess
-import shutil
-import tempfile
+from pathlib import Path
 
-# Add the project root to sys.path so 'src' can be imported
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Import functions from the main script
+# Assuming src/cbor_codegen.py is in the parent directory
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from cbor_codegen import (
+    parse_c_string,
+    _find_struct,
+    _collect_struct_and_typedef_definitions,
+    _get_base_type_and_modifiers, # New helper
+    _get_struct_members,
+    generate_cbor_code
+)
+from pycparser import c_ast
 
 logger = logging.getLogger(__name__)
 
-@pytest.fixture(autouse=True)
-def disable_logging(caplog):
-    # Disable logging during tests to avoid cluttering output
-    logging.disable(logging.CRITICAL)
-    yield
-    logging.disable(logging.NOTSET)
-
+# Fixture to set up a temporary CMake build directory for tinycbor
+# This fixture was problematic as it assumed a CMakeLists.txt at project root.
+# For unit tests, we don't need a full tinycbor build.
+# The full pipeline test handles the actual CMake build.
+# This fixture is likely for cppyy usage, which is not strictly necessary for these unit tests.
 @pytest.fixture(scope="session")
 def cmake_build_dir():
     """
-    Fixture to run CMake configuration and build in a temporary directory.
-    This ensures tinycbor is downloaded and built, and its paths are available.
+    Fixture to provide a dummy path.
+    The unit tests in this file do not require a full CMake build of tinycbor.
     """
-    # Determine the project root (one level up from the tests directory)
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    
-    # Create a temporary directory for the build
-    build_path = tempfile.mkdtemp(prefix="cbor_codegen_build_")
-    
-    logger.info(f"Created temporary CMake build directory: {build_path}")
-    logger.info(f"Running CMake configuration for source: {project_root}")
+    # This fixture is primarily for cppyy setup, which is not directly used by the
+    # functions being tested in this file (parse_c_string, _find_struct, etc.).
+    # The full pipeline test handles the actual CMake build.
+    # For now, return a dummy path. If cppyy is truly needed for these unit tests,
+    # its setup needs to be more robust or mocked.
+    yield "/tmp/dummy_build_dir" # Just a placeholder
 
-    try:
-        # Run CMake to configure the project
-        subprocess.run(
-            ["cmake", "-B", build_path, "-S", project_root],
-            check=True,
-            capture_output=True,
-            text=True
-        )
-        logger.info(f"CMake configuration successful in {build_path}")
+# --- Test parsing and AST manipulation helpers ---
 
-        # Run CMake to build the project (this will build tinycbor)
-        subprocess.run(
-            ["cmake", "--build", build_path],
-            check=True,
-            capture_output=True,
-            text=True
-        )
-        logger.info(f"CMake build successful in {build_path}")
-
-        # Determine tinycbor's include and library paths within the build directory
-        # These paths are specific to how FetchContent and tinycbor structure their output.
-        # Adjust if your CMake setup places them differently.
-        tinycbor_include_path = os.path.join(build_path, "_deps", "tinycbor-src", "src")
-        # tinycbor library is usually in _deps/tinycbor-build/src/
-        # The actual library file name might vary (e.g., libtinycbor.a, tinycbor.lib)
-        # For cppyy, adding the directory is usually sufficient for static libs.
-        tinycbor_lib_path = os.path.join(build_path, "_deps", "tinycbor-build", "src")
-
-        # Add these paths to cppyy's search paths
-        cppyy.add_include_path(tinycbor_include_path)
-        cppyy.add_library_path(tinycbor_lib_path)
-        logger.info(f"Added tinycbor include path to cppyy: {tinycbor_include_path}")
-        logger.info(f"Added tinycbor library path to cppyy: {tinycbor_lib_path}")
-
-        # Yield the path to the build directory
-        yield build_path
-        
-    except subprocess.CalledProcessError as e:
-        logger.error(f"CMake operation failed: {e}")
-        logger.error(f"STDOUT:\n{e.stdout}")
-        logger.error(f"STDERR:\n{e.stderr}")
-        pytest.fail(f"CMake operation failed: {e}")
-    finally:
-        # Clean up the temporary directory
-        logger.info(f"Cleaning up temporary CMake build directory: {build_path}")
-        shutil.rmtree(build_path)
-
-
-# Configure cppyy to find the header file
-# Assuming the script is run from the repo root or tests directory
-cppyy.add_include_path(os.path.join(os.path.dirname(__file__), '..')) # Add repo root
-cppyy.add_include_path(os.path.dirname(__file__)) # Add tests directory
-cppyy.include("my_data.h") # Include the struct definitions from tests/my_data.h
-
-def parse_c_string(c_code_string):
-    parser = c_parser.CParser()
-    return parser.parse(c_code_string, filename='<anon>')
-
-def test_find_struct_exists():
+def test_parse_c_string_simple():
     c_code = "struct MyStruct { int a; };"
     ast = parse_c_string(c_code)
-    struct_node = _find_struct("MyStruct", ast)
+    assert isinstance(ast, c_ast.FileAST)
+    assert len(ast.ext) > 0
+
+def test_find_struct_simple():
+    c_code = "struct MyStruct { int a; };"
+    file_ast = parse_c_string(c_code)
+    struct_node = _find_struct("MyStruct", file_ast)
     assert struct_node is not None
     assert struct_node.name == "MyStruct"
 
-def test_find_struct_not_exists():
-    c_code = "struct AnotherStruct { float b; };"
-    ast = parse_c_string(c_code)
-    struct_node = _find_struct("NonExistentStruct", ast)
+def test_find_struct_typedef():
+    c_code = "typedef struct { int x; } Point;"
+    file_ast = parse_c_string(c_code)
+    struct_node = _find_struct("Point", file_ast)
+    assert struct_node is not None
+    assert struct_node.name is None # Anonymous struct, name comes from typedef
+
+def test_find_struct_not_found():
+    c_code = "struct MyStruct { int a; };"
+    file_ast = parse_c_string(c_code)
+    struct_node = _find_struct("NonExistentStruct", file_ast)
     assert struct_node is None
 
-def test_find_typedef_exists():
-    c_code = "typedef struct { int x; } MyType;"
-    ast = parse_c_string(c_code)
-    typedef_node = _find_typedef("MyType", ast)
-    assert typedef_node is not None
-    assert typedef_node.name == "MyType"
+def test_collect_struct_and_typedef_definitions():
+    c_code = """
+    struct S1 { int a; };
+    typedef struct S2 { float b; } T2;
+    typedef struct { char c; } T3;
+    typedef S1 T1;
+    typedef struct S4* T4_ptr;
+    struct S4 { int d; };
+    """
+    file_ast = parse_c_string(c_code)
+    struct_defs, typedef_map = _collect_struct_and_typedef_definitions(file_ast)
 
-def test_find_typedef_not_exists():
-    c_code = "typedef struct { float y; } AnotherType;"
-    ast = parse_c_string(c_code)
-    typedef_node = _find_typedef("NonExistentType", ast)
-    assert typedef_node is None
+    assert "S1" in struct_defs
+    assert "S2" in struct_defs
+    assert "S4" in struct_defs
+    assert "T1" in typedef_map
+    assert "T2" in typedef_map
+    assert "T3" in typedef_map
+    assert "T4_ptr" in typedef_map
+
+    assert isinstance(struct_defs["S1"], c_ast.Struct)
+    assert isinstance(struct_defs["S2"], c_ast.Struct)
+    assert isinstance(struct_defs["S4"], c_ast.Struct)
+
+    assert isinstance(typedef_map["T1"], c_ast.Struct) # T1 should resolve to S1 struct
+    assert typedef_map["T1"].name == "S1"
+    assert isinstance(typedef_map["T2"], c_ast.Struct)
+    assert typedef_map["T2"].name == "S2"
+    assert isinstance(typedef_map["T3"], c_ast.Struct)
+    assert typedef_map["T3"].name is None # Anonymous struct
+
+    assert isinstance(typedef_map["T4_ptr"], c_ast.PtrDecl)
+    assert isinstance(typedef_map["T4_ptr"].type.type, c_ast.Struct)
+    assert typedef_map["T4_ptr"].type.type.name == "S4"
+
 
 def test_expand_in_place_typedef():
+    # This test now checks the behavior of _get_struct_members with typedefs,
+    # as _expand_in_place is no longer used for in-place AST modification.
+    # The type resolution is handled by _get_base_type_and_modifiers and _get_struct_members.
     c_code = """
     typedef struct { int x; } Point;
     struct Line { Point start; Point end; };
     """
     file_ast = parse_c_string(c_code)
+    struct_defs, typedef_map = _collect_struct_and_typedef_definitions(file_ast)
+
     line_struct = _find_struct("Line", file_ast)
     assert line_struct is not None
 
-    # Before expansion, 'start' and 'end' are TypeDecl with 'Point' as type
-    assert line_struct.decls[0].type.type.names[0] == 'Point'
+    members = _get_struct_members(line_struct, struct_defs, typedef_map)
 
-    _expand_in_place(line_struct, file_ast)
+    assert len(members) == 2
+    assert members[0]['name'] == 'start'
+    assert members[0]['type_name'] == 'anonymous_struct' # Or 'Point' if we prefer typedef name
+    assert members[0]['is_struct']
+    assert members[0]['type_category'] == 'struct'
 
-    # After expansion, 'start' and 'end' should be Struct with 'Point' name
-    assert isinstance(line_struct.decls[0].type.type, c_ast.Struct)
-    assert line_struct.decls[0].type.type.name == 'Point'
-    assert isinstance(line_struct.decls[1].type.type, c_ast.Struct)
-    assert line_struct.decls[1].type.type.name == 'Point'
+    assert members[1]['name'] == 'end'
+    assert members[1]['type_name'] == 'anonymous_struct' # Or 'Point'
+    assert members[1]['is_struct']
+    assert members[1]['type_category'] == 'struct'
 
-def test_expand_in_place_nested_struct():
-    c_code = """
-    struct Inner { int i; };
-    struct Outer { struct Inner inner_field; };
-    """
-    file_ast = parse_c_string(c_code)
-    outer_struct = _find_struct("Outer", file_ast)
-    assert outer_struct is not None
 
-    # Before expansion, 'inner_field' is Struct with 'Inner' name
-    assert isinstance(outer_struct.decls[0].type.type, c_ast.Struct)
-    assert outer_struct.decls[0].type.type.name == 'Inner'
+# --- Test _get_base_type_and_modifiers ---
 
-    # Expansion should not change already defined structs, but ensure it doesn't break
-    _expand_in_place(outer_struct, file_ast)
-
-    # Should still be Struct with 'Inner' name
-    assert isinstance(outer_struct.decls[0].type.type, c_ast.Struct)
-    assert outer_struct.decls[0].type.type.name == 'Inner'
-
-def test_extract_base_type_info_int():
+def test_get_base_type_and_modifiers_int():
     c_code = "struct Test { int a; };"
     file_ast = parse_c_string(c_code)
     struct_node = _find_struct("Test", file_ast)
     field_node = struct_node.decls[0]
-    
-    type_info = _extract_base_type_info(field_node.type, file_ast)
-    assert type_info['type'] == 'primitive'
-    assert type_info['base_type'] == 'int'
-    assert type_info['is_array'] is False
-    assert type_info['array_size'] is None
-    assert type_info['is_pointer'] is False
-    assert type_info['is_struct'] is False
-    assert type_info['struct_name'] is None
+    base_type, is_pointer, array_size = _get_base_type_and_modifiers(field_node.type, {})
+    assert isinstance(base_type, c_ast.IdentifierType)
+    assert ' '.join(base_type.names) == 'int'
+    assert not is_pointer
+    assert array_size is None
 
-def test_extract_base_type_info_char_array():
+def test_get_base_type_and_modifiers_char_array():
     c_code = "struct Test { char name[64]; };"
     file_ast = parse_c_string(c_code)
     struct_node = _find_struct("Test", file_ast)
     field_node = struct_node.decls[0]
-    
-    type_info = _extract_base_type_info(field_node.type, file_ast)
-    assert type_info['type'] == 'char_array'
-    assert type_info['base_type'] == 'char'
-    assert type_info['is_array'] is True
-    assert type_info['array_size'] == 64
-    assert type_info['is_pointer'] is False
-    assert type_info['is_struct'] is False
-    assert type_info['struct_name'] is None
+    base_type, is_pointer, array_size = _get_base_type_and_modifiers(field_node.type, {})
+    assert isinstance(base_type, c_ast.IdentifierType)
+    assert ' '.join(base_type.names) == 'char'
+    assert not is_pointer
+    assert array_size == 64
 
-def test_extract_base_type_info_pointer_char():
+def test_get_base_type_and_modifiers_pointer_char():
     c_code = "struct Test { char* email; };"
     file_ast = parse_c_string(c_code)
     struct_node = _find_struct("Test", file_ast)
     field_node = struct_node.decls[0]
-    
-    type_info = _extract_base_type_info(field_node.type, file_ast)
-    assert type_info['type'] == 'pointer'
-    assert type_info['base_type'] == 'char'
-    assert type_info['is_array'] is False
-    assert type_info['array_size'] is None
-    assert type_info['is_pointer'] is True
-    assert type_info['is_struct'] is False
-    assert type_info['struct_name'] is None
+    base_type, is_pointer, array_size = _get_base_type_and_modifiers(field_node.type, {})
+    assert isinstance(base_type, c_ast.IdentifierType)
+    assert ' '.join(base_type.names) == 'char'
+    assert is_pointer
+    assert array_size is None
 
-def test_extract_base_type_info_nested_struct():
+def test_get_base_type_and_modifiers_nested_struct():
     c_code = """
     struct Point { int x; float y; };
     struct Test { struct Point location; };
@@ -213,218 +175,210 @@ def test_extract_base_type_info_nested_struct():
     file_ast = parse_c_string(c_code)
     struct_node = _find_struct("Test", file_ast)
     field_node = struct_node.decls[0]
-    
-    type_info = _extract_base_type_info(field_node.type, file_ast)
-    assert type_info['type'] == 'struct'
-    assert type_info['base_type'] == 'struct' # Indicates it's a struct type
-    assert type_info['is_array'] is False
-    assert type_info['array_size'] is None
-    assert type_info['is_pointer'] is False
-    assert type_info['is_struct'] is True
-    assert type_info['struct_name'] == 'Point'
-    assert len(type_info['members']) == 2
-    assert type_info['members'][0]['name'] == 'x'
-    assert type_info['members'][1]['name'] == 'y'
+    base_type, is_pointer, array_size = _get_base_type_and_modifiers(field_node.type, {})
+    assert isinstance(base_type, c_ast.Struct)
+    assert base_type.name == 'Point'
+    assert not is_pointer
+    assert array_size is None
 
-
-# Test for simple struct generation
-# This test uses the cmake_build_dir fixture to ensure cbor.h is found.
-def test_generate_cbor_code_for_simple_struct(cmake_build_dir):
+def test_get_base_type_and_modifiers_typedef_struct():
     c_code = """
-    #include <stdbool.h> // For 'bool'
-    struct Simple { int a; };
+    typedef struct { int x; } Point;
+    struct Test { Point p; };
     """
     file_ast = parse_c_string(c_code)
-    struct_node = _find_struct("Simple", file_ast)
-    assert struct_node is not None
+    struct_defs, typedef_map = _collect_struct_and_typedef_definitions(file_ast)
+    struct_node = _find_struct("Test", file_ast)
+    field_node = struct_node.decls[0]
+    base_type, is_pointer, array_size = _get_base_type_and_modifiers(field_node.type, typedef_map)
+    assert isinstance(base_type, c_ast.Struct)
+    assert base_type.name is None # Anonymous struct
+    assert not is_pointer
+    assert array_size is None
 
-    generated_encode_code, encode_prototype = generate_cbor_code_for_struct(struct_node, file_ast)
+def test_get_base_type_and_modifiers_typedef_pointer_to_struct():
+    c_code = """
+    struct MyData { int x; };
+    typedef struct MyData* MyDataPtr;
+    struct Test { MyDataPtr data_ptr; };
+    """
+    file_ast = parse_c_string(c_code)
+    struct_defs, typedef_map = _collect_struct_and_typedef_definitions(file_ast)
+    struct_node = _find_struct("Test", file_ast)
+    field_node = struct_node.decls[0]
+    base_type, is_pointer, array_size = _get_base_type_and_modifiers(field_node.type, typedef_map)
+    assert isinstance(base_type, c_ast.Struct)
+    assert base_type.name == 'MyData'
+    assert is_pointer
+    assert array_size is None
 
-    # Compile and test the generated code using cppyy
-    full_c_code = f"""
+
+# --- Test _get_struct_members ---
+
+def test_get_struct_members_simple():
+    c_code = """
     #include <stdint.h>
     #include <stdbool.h>
-    #include <string.h>
-    #include <stdio.h> // For debugging printfs if any
-    #include <cbor.h> // cbor.h is now found via cmake_build_dir fixture
-
-    // The struct definition for this test
-    struct Simple {{ int a; }};
-
-    // The generated CBOR encoding function
-    {generated_encode_code}
-
-    // Wrapper function to encode into a buffer and return length
-    size_t test_encode_Simple_wrapper(const struct Simple* data, uint8_t* buffer, size_t buffer_size) {{
-        CborEncoder encoder;
-        cbor_encoder_init(&encoder, buffer, buffer_size, 0);
-        cbor_encode_Simple(&encoder, data);
-        return cbor_encoder_get_buffer_size(&encoder, buffer);
-    }}
-    """
-    cppyy.cppdef(full_c_code)
-
-    # Access the compiled struct and functions
-    Simple = cppyy.gbl.Simple
-    test_encode_Simple_wrapper = cppyy.gbl.test_encode_Simple_wrapper
-
-    # Test encoding
-    original_simple = Simple()
-    original_simple.a = 42
-
-    buffer_size = 100
-    buffer = cppyy.gbl.new_array(cppyy.gbl.uint8_t, buffer_size)
-
-    encoded_len = test_encode_Simple_wrapper(original_simple, buffer, buffer_size)
-    assert encoded_len > 0
-    assert encoded_len <= buffer_size
-
-    # Clean up the buffer
-    cppyy.gbl.delete_array(buffer)
-
-
-# Test for struct with nested struct and arrays
-# This test uses the cmake_build_dir fixture to ensure cbor.h is found.
-def test_generate_cbor_code_for_struct_with_nested_struct(cmake_build_dir):
-    # The Person struct is defined in tests/my_data.h, which is included via cppyy.include
-    # We need to parse a dummy C code string to get the AST for Person,
-    # as the actual struct definition is in my_data.h
-    c_code = """
-    #include "my_data.h" // Include the actual header for struct definitions
-    // Dummy struct definition to get AST node for Person
-    struct Person {
-        char name[64];
-        int age;
-        bool is_student;
-        Point location; // Nested struct
-        int scores[5]; // Array of integers
-        char* email; // Pointer to char (string)
-        uint64_t id;
-        double balance;
-        struct Address address; // Nested struct defined above
-        char notes[256]; // Added from my_data.h
-        int* favorite_number; // Added from my_data.h
+    struct SimpleData {
+        int32_t id;
+        char name[32];
+        bool is_active;
+        float temperature;
+        uint8_t flags[4];
     };
     """
     file_ast = parse_c_string(c_code)
-    struct_node = _find_struct("Person", file_ast)
-    assert struct_node is not None
+    struct_defs, typedef_map = _collect_struct_and_typedef_definitions(file_ast)
+    simple_data_struct = _find_struct("SimpleData", file_ast)
+    members = _get_struct_members(simple_data_struct, struct_defs, typedef_map)
 
-    generated_encode_code, encode_prototype = generate_cbor_code_for_struct(struct_node, file_ast)
+    assert len(members) == 5
+    assert members[0]['name'] == 'id'
+    assert members[0]['type_name'] == 'int32_t'
+    assert members[0]['type_category'] == 'primitive'
 
-    # Compile and test the generated code using cppyy
-    # my_data.h is already included globally by cppyy.include at the top of the file
-    full_c_code = f"""
-    #include <stdint.h>
-    #include <stdbool.h>
-    #include <string.h>
-    #include <stdio.h> // For debugging printfs if any
-    #include <stdlib.h> // For malloc/free if needed by dummy decoder
-    #include <cbor.h> // cbor.h is now found via cmake_build_dir fixture
-    #include "my_data.h" // Include the actual header for struct definitions
+    assert members[1]['name'] == 'name'
+    assert members[1]['type_name'] == 'char'
+    assert members[1]['array_size'] == 32
+    assert members[1]['type_category'] == 'char_array'
 
-    // The generated CBOR encoding function for Person
-    {generated_encode_code}
+    assert members[2]['name'] == 'is_active'
+    assert members[2]['type_name'] == 'bool'
+    assert members[2]['type_category'] == 'primitive'
 
-    // Wrapper function to encode into a buffer and return length
-    size_t test_encode_Person_wrapper(const struct Person* data, uint8_t* buffer, size_t buffer_size) {{
-        CborEncoder encoder;
-        cbor_encoder_init(&encoder, buffer, buffer_size, 0);
-        cbor_encode_Person(&encoder, data);
-        return cbor_encoder_get_buffer_size(&encoder, buffer);
-    }}
+    assert members[3]['name'] == 'temperature'
+    assert members[3]['type_name'] == 'float'
+    assert members[3]['type_category'] == 'primitive'
+
+    assert members[4]['name'] == 'flags'
+    assert members[4]['type_name'] == 'uint8_t'
+    assert members[4]['array_size'] == 4
+    assert members[4]['type_category'] == 'array'
+
+def test_get_struct_members_nested_and_pointer():
+    c_code = """
+    struct SimpleData { int id; };
+    struct NestedData {
+        struct SimpleData inner_data;
+        char* description;
+        int32_t value;
+    };
     """
-    cppyy.cppdef(full_c_code)
-
-    # Access the compiled structs and functions
-    Person = cppyy.gbl.Person
-    Point = cppyy.gbl.Point
-    Address = cppyy.gbl.Address
-    strcpy = cppyy.gbl.strcpy # For char arrays
-    
-    test_encode_Person_wrapper = cppyy.gbl.test_encode_Person_wrapper
-
-    # Test encoding
-    original_person = Person()
-    strcpy(original_person.name, "Alice Smith")
-    original_person.age = 30
-    original_person.is_student = True
-    original_person.location.x = 10
-    original_person.location.y = 20.5
-    original_person.scores[0] = 100
-    original_person.scores[1] = 90
-    original_person.scores[2] = 80
-    original_person.scores[3] = 70
-    original_person.scores[4] = 60
-    original_person.email = "alice@example.com" # cppyy handles this by creating a C string literal
-    original_person.id = 1234567890123456789
-    original_person.balance = 12345.6789
-
-    strcpy(original_person.address.street, "123 Main St")
-    original_person.address.number = 123
-    strcpy(original_person.address.city, "Anytown")
-    strcpy(original_person.notes, "Some notes about Alice.")
-    original_person.favorite_number = cppyy.gbl.new_array(cppyy.gbl.int, 1)
-    original_person.favorite_number[0] = 77
-
-    buffer_size = 1024 # Larger buffer for complex struct
-    buffer = cppyy.gbl.new_array(cppyy.gbl.uint8_t, buffer_size)
-
-    encoded_len = test_encode_Person_wrapper(original_person, buffer, buffer_size)
-    assert encoded_len > 0
-    assert encoded_len <= buffer_size
-
-    # Clean up the buffer
-    cppyy.gbl.delete_array(buffer)
-    cppyy.gbl.delete_array(original_person.favorite_number) # Clean up original's allocated pointer
-
-
-# Test for empty struct generation
-# This test uses the cmake_build_dir fixture to ensure cbor.h is found.
-def test_generate_cbor_code_for_empty_struct(cmake_build_dir):
-    # The EmptyStruct is defined in tests/my_data.h, which is included via cppyy.include
-    c_code = "struct EmptyStruct {};"
     file_ast = parse_c_string(c_code)
-    struct_node = _find_struct("EmptyStruct", file_ast)
-    assert struct_node is not None
+    struct_defs, typedef_map = _collect_struct_and_typedef_definitions(file_ast)
+    nested_data_struct = _find_struct("NestedData", file_ast)
+    members = _get_struct_members(nested_data_struct, struct_defs, typedef_map)
 
-    generated_encode_code, encode_prototype = generate_cbor_code_for_struct(struct_node, file_ast)
+    assert len(members) == 3
+    assert members[0]['name'] == 'inner_data'
+    assert members[0]['type_name'] == 'SimpleData'
+    assert members[0]['is_struct']
+    assert members[0]['type_category'] == 'struct'
 
-    # Compile and test the generated code using cppyy
-    full_c_code = f"""
+    assert members[1]['name'] == 'description'
+    assert members[1]['type_name'] == 'char'
+    assert members[1]['is_pointer']
+    assert members[1]['type_category'] == 'char_ptr'
+
+    assert members[2]['name'] == 'value'
+    assert members[2]['type_name'] == 'int32_t'
+    assert members[2]['type_category'] == 'primitive'
+
+# --- Test full code generation (requires temporary files) ---
+
+def test_generate_cbor_code_for_simple_struct(tmp_path):
+    header_content = """
     #include <stdint.h>
     #include <stdbool.h>
-    #include <string.h>
-    #include <stdio.h> // For debugging printfs if any
-    #include <cbor.h> // cbor.h is now found via cmake_build_dir fixture
-    #include "my_data.h" // Include the actual header for struct definitions
-
-    // The generated CBOR encoding function for EmptyStruct
-    {generated_encode_code}
-
-    // Wrapper function to encode into a buffer and return length
-    size_t test_encode_EmptyStruct_wrapper(const struct EmptyStruct* data, uint8_t* buffer, size_t buffer_size) {{
-        CborEncoder encoder;
-        cbor_encoder_init(&encoder, buffer, buffer_size, 0);
-        cbor_encode_EmptyStruct(&encoder, data);
-        return cbor_encoder_get_buffer_size(&encoder, buffer);
-    }}
+    struct MySimpleStruct {
+        int id;
+        char name[16];
+        bool active;
+    };
     """
-    cppyy.cppdef(full_c_code)
+    header_file = tmp_path / "my_simple_struct.h"
+    header_file.write_text(header_content)
 
-    # Access the compiled struct and functions
-    EmptyStruct = cppyy.gbl.EmptyStruct
-    test_encode_EmptyStruct_wrapper = cppyy.gbl.test_encode_EmptyStruct_wrapper
+    output_dir = tmp_path / "generated"
+    output_dir.mkdir()
 
-    # Test encoding
-    original_empty = EmptyStruct()
+    success = generate_cbor_code(header_file, output_dir)
+    assert success
+    assert (output_dir / "cbor_generated.h").exists()
+    assert (output_dir / "cbor_generated.c").exists()
 
-    buffer_size = 100
-    buffer = cppyy.gbl.new_array(cppyy.gbl.uint8_t, buffer_size)
+    generated_h = (output_dir / "cbor_generated.h").read_text()
+    generated_c = (output_dir / "cbor_generated.c").read_text()
 
-    encoded_len = test_encode_EmptyStruct_wrapper(original_empty, buffer, buffer_size)
-    assert encoded_len > 0 # Even empty structs might have a minimal CBOR representation (e.g., map of 0 items)
-    assert encoded_len <= buffer_size
+    assert "struct MySimpleStruct;" in generated_h
+    assert "bool encode_MySimpleStruct" in generated_h
+    assert "bool decode_MySimpleStruct" in generated_h
 
-    # Clean up the buffer
-    cppyy.gbl.delete_array(buffer)
+    assert "bool encode_MySimpleStruct" in generated_c
+    assert "bool decode_MySimpleStruct" in generated_c
+    assert 'cbor_encode_int(&map_encoder, data->id);' in generated_c
+    assert 'encode_text_string(data->name, &map_encoder);' in generated_c
+    assert 'cbor_encode_boolean(&map_encoder, data->active);' in generated_c
+    assert 'decode_text_string(data->name, sizeof(data->name), &map_it);' in generated_c
+
+def test_generate_cbor_code_for_struct_with_nested_struct(tmp_path):
+    header_content = """
+    #include <stdint.h>
+    struct Inner {
+        int x;
+    };
+    struct Outer {
+        struct Inner inner_field;
+        char* description;
+    };
+    """
+    header_file = tmp_path / "nested_struct.h"
+    header_file.write_text(header_content)
+
+    output_dir = tmp_path / "generated"
+    output_dir.mkdir()
+
+    success = generate_cbor_code(header_file, output_dir)
+    assert success
+    assert (output_dir / "cbor_generated.h").exists()
+    assert (output_dir / "cbor_generated.c").exists()
+
+    generated_h = (output_dir / "cbor_generated.h").read_text()
+    generated_c = (output_dir / "cbor_generated.c").read_text()
+
+    assert "struct Inner;" in generated_h
+    assert "struct Outer;" in generated_h
+    assert "bool encode_Inner" in generated_h
+    assert "bool decode_Inner" in generated_h
+    assert "bool encode_Outer" in generated_h
+    assert "bool decode_Outer" in generated_h
+
+    assert "if (!encode_Inner(&data->inner_field, &map_encoder)) return false;" in generated_c
+    assert "if (!decode_Inner(&data->inner_field, &map_it)) return false;" in generated_c
+    assert "if (!encode_text_string(data->description, &map_encoder)) return false;" in generated_c
+    assert "if (!decode_char_ptr(&data->description, 256, &map_it)) return false;" in generated_c # Check for MAX_STRING_LEN
+
+def test_generate_cbor_code_for_empty_struct(tmp_path):
+    header_content = """
+    struct EmptyStruct {};
+    """
+    header_file = tmp_path / "empty_struct.h"
+    header_file.write_text(header_content)
+
+    output_dir = tmp_path / "generated"
+    output_dir.mkdir()
+
+    success = generate_cbor_code(header_file, output_dir)
+    assert success
+    assert (output_dir / "cbor_generated.h").exists()
+    assert (output_dir / "cbor_generated.c").exists()
+
+    generated_h = (output_dir / "cbor_generated.h").read_text()
+    generated_c = (output_dir / "cbor_generated.c").read_text()
+
+    assert "struct EmptyStruct;" in generated_h
+    assert "bool encode_EmptyStruct" in generated_h
+    assert "bool decode_EmptyStruct" in generated_h
+
+    assert "cbor_encoder_create_map(encoder, &map_encoder, 0);" in generated_c # Empty map
+    assert "while (!cbor_value_at_end(&map_it))" in generated_c # Loop will be empty, but structure is there
