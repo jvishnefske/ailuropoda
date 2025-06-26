@@ -22,28 +22,29 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(VENV_DIR "${CMAKE_CURRENT_BINARY_DIR}/.venv")
 
 # Command to create and update the uv virtual environment and install pycparser
-# Use the found UV_EXECUTABLE directly
+# Removed 'my_data.h' as a dependency for venv setup, and corrected cbor_codegen.py path
 add_custom_command(
     OUTPUT ${VENV_DIR}/bin/python # A sentinel file for the venv
     COMMAND ${UV_EXECUTABLE} venv ${VENV_DIR}
     COMMAND ${VENV_DIR}/bin/uv pip install pycparser
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Setting up Python virtual environment with uv and installing pycparser for CMake"
-    DEPENDS cbor_codegen.py my_data.h # No longer depends on 'ensure_uv_installed'
+    DEPENDS src/cbor_codegen.py # Only depends on the script itself if its presence is needed for venv setup
     VERBATIM
 )
 add_custom_target(uv_venv_setup ALL DEPENDS ${VENV_DIR}/bin/python)
 
 # Custom command to run the CBOR code generator
+# Corrected paths for cbor_codegen.py and my_data.h
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/cbor_generated.h
            ${CMAKE_CURRENT_BINARY_DIR}/cbor_generated.c
-    COMMAND ${VENV_DIR}/bin/python ${CMAKE_CURRENT_SOURCE_DIR}/cbor_codegen.py
-            ${CMAKE_CURRENT_SOURCE_DIR}/my_data.h
+    COMMAND ${VENV_DIR}/bin/python ${CMAKE_CURRENT_SOURCE_DIR}/src/cbor_codegen.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/my_data.h
             --output-dir ${CMAKE_CURRENT_BINARY_DIR}
             --cpp-path ${CMAKE_C_COMPILER} # Use the C compiler as preprocessor
-            --cpp-args "-I${CMAKE_CURRENT_SOURCE_DIR}" # Include my_data.h's directory
-    DEPENDS cbor_codegen.py my_data.h uv_venv_setup # Depend on the venv setup
+            --cpp-args "-I${CMAKE_CURRENT_SOURCE_DIR}/tests" # Include tests/ directory for my_data.h
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/cbor_codegen.py ${CMAKE_CURRENT_SOURCE_DIR}/tests/my_data.h uv_venv_setup # Depend on the venv setup
     COMMENT "Generating CBOR encode/decode code for my_data.h"
     VERBATIM
 )
@@ -53,6 +54,7 @@ add_custom_target(cbor_codegen_target ALL
 )
 
 # Add your source files here
+# Assuming my_data.c is in the project root, if it's in tests/ it needs to be updated here too.
 add_executable(my_app
     my_data.c
     ${CMAKE_CURRENT_BINARY_DIR}/cbor_generated.c
