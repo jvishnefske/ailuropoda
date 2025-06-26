@@ -10,10 +10,25 @@ logger = logging.getLogger(__name__)
 def _find_struct(name, ast):
     """
     Finds a struct definition by name in the AST.
+    Handles structs defined directly, or wrapped in Decl/Typedef nodes.
     """
     for node in ast.ext:
+        # Case 1: Direct struct definition (e.g., `struct MyStruct { ... };`)
         if isinstance(node, c_ast.Struct) and node.name == name:
             return node
+        # Case 2: Struct definition wrapped in a Decl (common for top-level structs)
+        # e.g., `struct MyStruct { int x; };` might be parsed as Decl(type=TypeDecl(type=Struct(name='MyStruct', ...)))
+        elif isinstance(node, c_ast.Decl) and \
+             isinstance(node.type, c_ast.TypeDecl) and \
+             isinstance(node.type.type, c_ast.Struct) and \
+             node.type.type.name == name:
+            return node.type.type
+        # Case 3: Struct definition within a Typedef (e.g., `typedef struct MyStruct { ... } MyStructTypedef;`)
+        elif isinstance(node, c_ast.Typedef) and \
+             isinstance(node.type, c_ast.TypeDecl) and \
+             isinstance(node.type.type, c_ast.Struct) and \
+             node.type.type.name == name:
+            return node.type.type
     return None
 
 def _find_typedef(name, ast):
@@ -153,6 +168,8 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
     Generates C code for encoding a given struct into CBOR.
     Returns a tuple: (generated_code_string, function_prototype_string)
     """
+    if not struct_node: # Added check for None struct_node
+        return "", ""
     if not struct_node.name:
         return "", "" # Skip anonymous structs
 
@@ -271,32 +288,58 @@ def main():
     
     # Find all struct definitions
     for node in file_ast.ext:
-        if isinstance(node, c_ast.Struct):
-            if node.name: # Only process named structs
-                logger.info(f"Found struct: {node.name}")
-                generated_code, prototype = generate_cbor_code_for_struct(node, file_ast)
-                
+        # Check if the node itself is a struct definition
+        if isinstance(node, c_ast.Struct) and node.name:
+            logger.info(f"Found struct: {node.name}")
+            generated_code, prototype = generate_cbor_code_for_struct(node, file_ast)
+            if generated_code:
+                # Construct output C file path
+                output_c_filename = f"cbor_encode_{node.name}.c"
+                output_c_filepath = output_dir_path / output_c_filename
+
+                # Add necessary includes to the generated C file
+                c_file_content = []
+                c_file_content.append("#include <cbor.h>")
+                c_file_content.append(f"#include \"{header_file_path.name}\"") # Include the original header
+                c_file_content.append("")
+                c_file_content.append(generated_code)
+
+                try:
+                    with open(output_c_filepath, "w") as f:
+                        f.write("\n".join(c_file_content))
+                    logger.info(f"Generated code for struct {node.name} written to {output_c_filepath}")
+                    generated_prototypes.append(prototype)
+                except IOError as e:
+                    logger.error(f"Error writing to file {output_c_filepath}: {e}")
+        # Also check if the node is a Decl or Typedef that contains a struct definition
+        elif isinstance(node, (c_ast.Decl, c_ast.Typedef)):
+            # Check if the type of the declaration/typedef is a struct
+            if isinstance(node.type, c_ast.TypeDecl) and isinstance(node.type.type, c_ast.Struct) and node.type.type.name:
+                struct_node = node.type.type
+                logger.info(f"Found struct (via Decl/Typedef): {struct_node.name}")
+                generated_code, prototype = generate_cbor_code_for_struct(struct_node, file_ast)
                 if generated_code:
-                    # Construct output C file path
-                    output_c_filename = f"cbor_encode_{node.name}.c"
+                    output_c_filename = f"cbor_encode_{struct_node.name}.c"
                     output_c_filepath = output_dir_path / output_c_filename
 
-                    # Add necessary includes to the generated C file
                     c_file_content = []
                     c_file_content.append("#include <cbor.h>")
-                    c_file_content.append(f"#include \"{header_file_path.name}\"") # Include the original header
+                    c_file_content.append(f"#include \"{header_file_path.name}\"")
                     c_file_content.append("")
                     c_file_content.append(generated_code)
 
                     try:
                         with open(output_c_filepath, "w") as f:
                             f.write("\n".join(c_file_content))
-                        logger.info(f"Generated code for struct {node.name} written to {output_c_filepath}")
+                        logger.info(f"Generated code for struct {struct_node.name} written to {output_c_filepath}")
                         generated_prototypes.append(prototype)
                     except IOError as e:
                         logger.error(f"Error writing to file {output_c_filepath}: {e}")
             else:
-                logger.info("Skipping anonymous struct.")
+                logger.debug(f"Skipping Decl/Typedef node without a named struct definition: {node.__class__.__name__}")
+        else:
+            logger.debug(f"Skipping AST node of type: {node.__class__.__name__}")
+
 
     # Generate a single header file with all prototypes
     if generated_prototypes:
