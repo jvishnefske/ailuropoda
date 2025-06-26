@@ -91,4 +91,4 @@ We welcome contributions! Feel free to open issues or pull requests on our GitHu
 
 ## 📄 License
 
-
+This project is licensed under the [BSD 3-Clause License](LICENSE).
