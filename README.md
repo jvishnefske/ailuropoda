@@ -1,14 +1,27 @@
-# 📦 cbor-from-c: Automate CBOR for C Structs
+<p align="center">
+  <a href="https://github.com/jvishnefske/Ailuropoda">
+    <img src="https://img.shields.io/badge/Project-Ailuropoda-blueviolet?style=for-the-badge&logo=github" alt="Project Badge">
+  </a>
+  <a href="https://github.com/jvishnefske/Ailuropoda/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/jvishnefske/Ailuropoda/ci.yml?branch=main&style=for-the-badge&logo=githubactions&label=CI%20Build" alt="CI Build Status">
+  </a>
+  <img src="https://img.shields.io/badge/Python-3.8+-blue?style=for-the-badge&logo=python" alt="Python Version">
+  <a href="https://github.com/jvishnefske/Ailuropoda/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License: MIT">
+  </a>
+</p>
+
+# 🐼 Ailuropoda: Automate CBOR for C Structs
 
 ## ✨ Tired of writing tedious, error-prone boilerplate C code for CBOR serialization and deserialization?
 
-**`cbor-from-c`** is your solution! This powerful Python tool automatically generates robust C functions to encode and decode your C structs into Concise Binary Object Representation (CBOR), seamlessly integrating with the TinyCBOR library.
+**`Ailuropoda`** is your solution! This powerful Python tool automatically generates robust C functions to encode and decode your C structs into Concise Binary Object Representation (CBOR), seamlessly integrating with the TinyCBOR library.
 
 ---
 
-## 🚀 Why `cbor-from-c`?
+## 🚀 Why `Ailuropoda`?
 
-Manually handling CBOR for complex C data structures is a time sink. `cbor-from-c` eliminates this pain, letting you focus on your core logic while it handles the serialization boilerplate.
+Manually handling CBOR for complex C data structures is a time sink. `Ailuropoda` eliminates this pain, letting you focus on your core logic while it handles the serialization boilerplate.
 
 ### Key Features:
 
@@ -26,13 +39,13 @@ Manually handling CBOR for complex C data structures is a time sink. `cbor-from-
     *   `cbor_generated.h` and `cbor_generated.c` with your encode/decode functions.
     *   A `CMakeLists.txt` file to easily compile the generated code and link against TinyCBOR.
     *   *(Future/Optional)* Helper functions for `cbor2json` and `json2cbor` conversion, simplifying data inspection and interoperability.
-*   **Simplified Development**: Define your data structures in C headers, and let `cbor-from-c` handle the rest!
-
+*   **Simplified Development**: Define your data structures in C headers, and let `Ailuropoda` handle the rest!
+ 
 ---
 
 ## 🛠️ How It Works
 
-`cbor-from-c` leverages `pycparser` to parse your C header file's Abstract Syntax Tree (AST). It identifies `struct` definitions and their members, then intelligently generates the corresponding C encoding and decoding functions.
+`Ailuropoda` leverages `pycparser` to parse your C header file's Abstract Syntax Tree (AST). It identifies `struct` definitions and their members, then intelligently generates the corresponding C encoding and decoding functions.
 
 ---
 
@@ -81,7 +94,7 @@ uvx pip install ".[dev]"
 
 ## ⚠️ Assumptions and Limitations
 
-*   **C Preprocessing**: For complex header files with many `#include` directives or macros, it's recommended to preprocess the header first (e.g., using `gcc -E your_header.h`) and then pass the preprocessed output to `cbor-from-c`.
+*   **C Preprocessing**: For complex header files with many `#include` directives or macros, it's recommended to preprocess the header first (e.g., using `gcc -E your_header.h`) and then pass the preprocessed output to `Ailuropoda`.
 *   **Memory Management for Pointers**: For `char*` and other pointer types during decoding, the generated C code **does not** perform dynamic memory allocation (`malloc`). It assumes that the pointer members in your struct are already pointing to sufficiently large, allocated buffers. You are responsible for managing this memory.
 *   **Unsupported C Constructs**:
     *   `union` types are not supported.
@@ -96,7 +109,7 @@ uvx pip install ".[dev]"
 
 ## 🤝 Contributing
 
-We welcome contributions! Feel free to open issues or pull requests on our GitHub repository: [jvishnefske/cbor-from-c](https://github.com/jvishnefske/cbor-from-c)
+We welcome contributions! Feel free to open issues or pull requests on our GitHub repository: [jvishnefske/Ailuropoda](https://github.com/jvishnefske/Ailuropoda)
 
 ## 📄 License
 
