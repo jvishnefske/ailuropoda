@@ -4,6 +4,7 @@ import pytest
 import sys
 import os
 from pycparser import c_parser, c_ast, parse_file
+import tempfile # Add this import
 
 # Add the src directory to the Python path to allow importing modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
@@ -26,10 +27,19 @@ def disable_logging(caplog):
 
 # Helper function to parse a C string into a FileAST
 def parse_c_string(c_code_string):
-    parser = c_parser.CParser()
-    # Pass cpp_args to enable C11 standard parsing, which includes 'bool'
-    # Also, use `use_cpp=True` to allow preprocessor directives like #include
-    return parser.parse(c_code_string, filename='<test_code>', use_cpp=True, cpp_args=['-std=c11'])
+    # Create a temporary file to write the C code string
+    # pycparser's parse_file expects a file path, not a string directly for cpp processing
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.c', delete=False) as temp_f:
+        temp_f.write(c_code_string)
+        temp_file_path = temp_f.name
+
+    try:
+        # Use parse_file which correctly handles use_cpp and cpp_args
+        # The filename argument is used by pycparser for error reporting
+        return parse_file(temp_file_path, use_cpp=True, cpp_args=['-std=c11'])
+    finally:
+        # Clean up the temporary file
+        os.remove(temp_file_path)
 
 # --- Tests for _find_struct ---
 def test_find_struct_exists():
