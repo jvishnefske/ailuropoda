@@ -32,3 +32,4 @@ MANIFEST
 .python-version
 uv.lock
 *.swp
+.coverage
