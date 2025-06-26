@@ -113,9 +113,14 @@ def _extract_base_type_info(type_node, file_ast):
     """
     Extracts base type information from a pycparser type node.
     Handles primitive types, arrays, pointers, and nested structs.
+    Returns a dictionary with comprehensive type details.
     """
     is_array = False
-    array_len = None
+    array_size = None
+    is_pointer = False
+    is_struct = False
+    struct_name = None
+    base_type_name = "void"  # Default base type
 
     # Handle ArrayDecl (e.g., int arr[10])
     if isinstance(type_node, c_ast.ArrayDecl):
@@ -124,50 +129,39 @@ def _extract_base_type_info(type_node, file_ast):
             # Evaluate array dimension if it's a constant
             try:
                 if isinstance(type_node.dim, c_ast.Constant):
-                    array_len = int(type_node.dim.value)
+                    array_size = int(type_node.dim.value)
                 elif hasattr(
                     type_node.dim, "name"
                 ):  # Fallback for older pycparser or specific cases
-                    array_len = int(type_node.dim.name)
+                    array_size = int(type_node.dim.name)
                 else:
-                    array_len = None  # Could be a variable or complex expression
+                    array_size = None  # Could be a variable or complex expression
             except (AttributeError, ValueError):
-                array_len = None
+                array_size = None
         type_node = type_node.type  # Get the type of the array elements
 
     # Handle PtrDecl (pointers, e.g., char*)
     if isinstance(type_node, c_ast.PtrDecl):
-        # Special handling for char* as string
-        if (
-            isinstance(type_node.type, c_ast.TypeDecl)
-            and isinstance(type_node.type.type, c_ast.IdentifierType)
-            and type_node.type.type.names == ["char"]
-        ):
-            return {
-                "type": "pointer",
-                "base_type": "char",
-                "is_array": is_array,
-                "array_len": array_len,
-            }
-        # Handle case where PtrDecl.type is directly IdentifierType (no TypeDecl)
-        elif isinstance(
-            type_node.type, c_ast.IdentifierType
-        ) and type_node.type.names == ["char"]:
-            return {
-                "type": "pointer",
-                "base_type": "char",
-                "is_array": is_array,
-                "array_len": array_len,
-            }
-        else:
-            # Generic pointer, recursively extract base type of the pointed-to type
-            base_info = _extract_base_type_info(type_node.type, file_ast)
-            return {
-                "type": "pointer",
-                "base_type": base_info["base_type"],
-                "is_array": is_array,
-                "array_len": array_len,
-            }
+        is_pointer = True
+        # Recursively extract base type of the pointed-to type
+        # This will set base_type_name correctly for the pointed-to type
+        # and potentially other flags if the pointed-to type is a struct, etc.
+        base_info = _extract_base_type_info(type_node.type, file_ast)
+        base_type_name = base_info["base_type"]
+        is_struct = base_info["is_struct"]
+        struct_name = base_info["struct_name"]
+        # Note: is_array and array_size from the outer ArrayDecl are preserved.
+        # The 'type' field for a pointer will be 'pointer'.
+        return {
+            "type": "pointer",
+            "base_type": base_type_name,
+            "is_array": is_array,
+            "array_size": array_size,
+            "is_pointer": is_pointer,
+            "is_struct": is_struct,
+            "struct_name": struct_name,
+            "members": [],  # Pointers don't have members directly
+        }
 
     # Handle TypeDecl (most common for variable declarations, e.g., int x;)
     if isinstance(type_node, c_ast.TypeDecl):
@@ -175,7 +169,7 @@ def _extract_base_type_info(type_node, file_ast):
 
     # Handle IdentifierType (primitive types like int, float, bool, or typedefs)
     if isinstance(type_node, c_ast.IdentifierType):
-        base_type = " ".join(type_node.names)
+        base_type_name = " ".join(type_node.names)
         # List of common primitive types, including fixed-width integers
         primitive_types = [
             "int",
@@ -201,60 +195,85 @@ def _extract_base_type_info(type_node, file_ast):
             "uint64_t",
         ]
 
-        # IMPORTANT: Check for char array BEFORE general primitive char
-        if base_type == "char" and is_array:
-            return {
-                "type": "char_array",
-                "base_type": "char",
-                "is_array": is_array,
-                "array_len": array_len,
-            }
-        elif base_type in primitive_types:
-            return {
-                "type": "primitive",
-                "base_type": base_type,
-                "is_array": is_array,
-                "array_len": array_len,
-            }
+        if base_type_name in primitive_types:
+            # Special handling for char array vs. single char
+            if base_type_name == "char" and is_array:
+                return {
+                    "type": "char_array",
+                    "base_type": "char",
+                    "is_array": is_array,
+                    "array_size": array_size,
+                    "is_pointer": False,
+                    "is_struct": False,
+                    "struct_name": None,
+                    "members": [],
+                }
+            else:
+                return {
+                    "type": "primitive",
+                    "base_type": base_type_name,
+                    "is_array": is_array,
+                    "array_size": array_size,
+                    "is_pointer": False,
+                    "is_struct": False,
+                    "struct_name": None,
+                    "members": [],
+                }
         else:
             # Could be a typedef to a struct or another primitive
-            typedef_node = _find_typedef(base_type, file_ast)
+            typedef_node = _find_typedef(base_type_name, file_ast)
             if typedef_node:
                 # Recursively get info for the typedef's underlying type
-                return _extract_base_type_info(typedef_node.type, file_ast)
+                # This will correctly set is_struct, struct_name, etc.
+                typedef_info = _extract_base_type_info(typedef_node.type, file_ast)
+                # Merge array/pointer info from current context if applicable
+                typedef_info["is_array"] = is_array or typedef_info["is_array"]
+                typedef_info["array_size"] = array_size or typedef_info["array_size"]
+                typedef_info["is_pointer"] = is_pointer or typedef_info["is_pointer"]
+                return typedef_info
             else:
                 logger.warning(
-                    f"Unhandled IdentifierType '{base_type}'. Treating as generic."
+                    f"Unhandled IdentifierType '{base_type_name}'. Treating as generic."
                 )
                 return {
                     "type": "unknown",
-                    "base_type": base_type,
+                    "base_type": base_type_name,
                     "is_array": is_array,
-                    "array_len": array_len,
+                    "array_size": array_size,
+                    "is_pointer": is_pointer,
+                    "is_struct": False,
+                    "struct_name": None,
+                    "members": [],
                 }
 
     # Handle Struct (nested structs)
     if isinstance(type_node, c_ast.Struct):
-        struct_info = {
-            "type": "struct",
-            "base_type": type_node.name,
-            "is_array": is_array,
-            "array_len": array_len,
-            "members": [],
-        }
+        is_struct = True
+        struct_name = type_node.name
+        struct_members = []
+
         if type_node.decls:  # If the struct definition is inlined (anonymous or named)
             for decl in type_node.decls:
                 member_info = _extract_base_type_info(decl.type, file_ast)
                 member_info["name"] = decl.name
-                struct_info["members"].append(member_info)
+                struct_members.append(member_info)
         elif type_node.name:  # If it's just a declaration, try to find its definition
             struct_def = _find_struct(type_node.name, file_ast)
             if struct_def and struct_def.decls:
                 for decl in struct_def.decls:
                     member_info = _extract_base_type_info(decl.type, file_ast)
                     member_info["name"] = decl.name
-                    struct_info["members"].append(member_info)
-        return struct_info
+                    struct_members.append(member_info)
+        return {
+            "type": "struct",
+            "base_type": "struct",  # Indicate it's a struct type
+            "is_array": is_array,
+            "array_size": array_size,
+            "is_pointer": False,
+            "is_struct": is_struct,
+            "struct_name": struct_name,
+            "members": struct_members,
+        }
     else:
         # Fallback for unhandled types
         type_name = "N/A"
@@ -270,7 +289,11 @@ def _extract_base_type_info(type_node, file_ast):
             "type": "unknown",
             "base_type": "void",
             "is_array": False,
-            "array_len": None,
+            "array_size": None,
+            "is_pointer": False,
+            "is_struct": False,
+            "struct_name": None,
+            "members": [],
         }
 
 
@@ -321,17 +344,17 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
         )
 
         # Prioritize array handling
-        if type_info["is_array"] and type_info["array_len"] is not None:
+        if type_info["is_array"] and type_info["array_size"] is not None:
             if type_info["type"] == "char_array":
                 code.append(
                     f"    cbor_encode_text_string(&map_encoder, data->{member_name}, strlen(data->{member_name}));"
                 )
             else:  # Arrays of other primitive types
                 code.append(
-                    f"    cbor_encode_array_start(&map_encoder, &map_encoder, {type_info['array_len']});"
+                    f"    cbor_encode_array_start(&map_encoder, &map_encoder, {type_info['array_size']});"
                 )
                 code.append(
-                    f"    for (size_t i = 0; i < {type_info['array_len']}; ++i) {{"
+                    f"    for (size_t i = 0; i < {type_info['array_size']}; ++i) {{"
                 )
                 if type_info["base_type"] in [
                     "int",
@@ -412,10 +435,16 @@ def generate_cbor_code_for_struct(struct_node, file_ast):
             code.append(f"        cbor_encode_null(&map_encoder);")
             code.append(f"    }}")
         elif type_info["type"] == "struct":
-            nested_struct_name = type_info["base_type"]
+            nested_struct_name = type_info["struct_name"] # Use struct_name from new type_info
             code.append(
                 f"    cbor_encode_{nested_struct_name}(&map_encoder, &data->{member_name});"
             )
+        elif type_info["type"] == "pointer" and type_info["base_type"] == "int": # Example for int*
+            code.append(f"    if (data->{member_name}) {{")
+            code.append(f"        cbor_encode_int(&map_encoder, *data->{member_name});")
+            code.append(f"    }} else {{")
+            code.append(f"        cbor_encode_null(&map_encoder);")
+            code.append(f"    }}")
         else:
             code.append(f"    // WARNING: Unhandled type for member '{member_name}'")
 
