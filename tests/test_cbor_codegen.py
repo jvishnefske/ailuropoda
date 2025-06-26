@@ -1,12 +1,16 @@
+import sys
+import os
 import pytest
 import cppyy
-import os
 from pycparser import c_parser, c_ast
 from src.cbor_codegen import generate_cbor_code_for_struct, _find_struct, _find_typedef, _expand_in_place, _extract_base_type_info
 import logging
-import subprocess # Added for running cmake
-import shutil     # Added for cleaning up directories
-import tempfile   # Added for creating temporary directories
+import subprocess
+import shutil
+import tempfile
+
+# Add the project root to sys.path so 'src' can be imported
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 logger = logging.getLogger(__name__)
 
