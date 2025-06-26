@@ -11,13 +11,15 @@ logger = logging.getLogger(__name__)
 
 # --- Helper functions ---
 
-def parse_c_string(c_code_string, cpp_path=None, cpp_args=None):
+def parse_c_string(c_code_string):
     """
     Parses a C code string into a pycparser AST.
+    The string is assumed to be already preprocessed.
     """
     parser = c_parser.CParser()
-    # Use parse() for parsing directly from a string
-    return parser.parse(c_code_string, filename='<anon>', cpp_path=cpp_path, cpp_args=cpp_args)
+    # Use parse() for parsing directly from a string.
+    # cpp_path and cpp_args are not applicable when parsing a string directly.
+    return parser.parse(c_code_string, filename='<anon>')
 
 def _find_struct(struct_name, ast_node):
     """
@@ -216,7 +218,8 @@ def generate_cbor_code(header_file_path, output_dir):
         c_code_string = f.read()
 
     # pycparser needs some dummy defines for standard types if not using a full C preprocessor
-    # For simplicity, we'll add common ones. For real projects, use cpp_path and cpp_args.
+    # For simplicity, we'll add common ones. For real projects, consider preprocessing
+    # the header file externally (e.g., using gcc -E) before passing it to this script.
     fake_libc_includes = """
     #define __attribute__(x)
     #define __extension__
@@ -285,8 +288,8 @@ def main():
     parser.add_argument("header_file", type=Path, help="Path to the C header file containing struct definitions.")
     parser.add_argument("--output-dir", type=Path, default=Path("./generated_cbor"),
                         help="Directory to output the generated C files.")
-    parser.add_argument("--cpp-path", type=str, default="gcc", help="Path to the C preprocessor (e.g., 'gcc').")
-    parser.add_argument("--cpp-args", type=str, default="", help="Arguments to pass to the C preprocessor (e.g., '-I/path/to/includes').")
+    # Removed --cpp-path and --cpp-args as they are not used when parsing a string directly.
+    # Users should preprocess their header files externally if complex preprocessing is needed.
 
     parsed_args = parser.parse_args()
 
