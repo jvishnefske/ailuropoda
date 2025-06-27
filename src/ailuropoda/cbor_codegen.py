@@ -216,14 +216,16 @@ def generate_cbor_code(header_file_path, output_dir, cpp_path=None, cpp_args=Non
 
     structs_to_generate = []
     for ext in ast.ext:
-        if isinstance(ext, c_ast.Decl) and isinstance(ext.type, c_ast.Struct) and ext.type.decls:
-            # Named struct definition (e.g., `struct MyStruct { ... };`)
+        if isinstance(ext, c_ast.Decl) and isinstance(ext.type, c_ast.Struct):
             struct_node = ext.type
-            structs_to_generate.append(struct_node)
-        elif isinstance(ext, c_ast.Typedef) and isinstance(ext.type, c_ast.TypeDecl) and isinstance(ext.type.type, c_ast.Struct) and ext.type.type.decls:
-            # Typedef struct definition (e.g., `typedef struct MyStruct { ... } MyStruct_t;`)
+            # Only process named structs with declarations
+            if struct_node.name and struct_node.decls:
+                structs_to_generate.append(struct_node)
+        elif isinstance(ext, c_ast.Typedef) and isinstance(ext.type, c_ast.TypeDecl) and isinstance(ext.type.type, c_ast.Struct):
             struct_node = ext.type.type
-            structs_to_generate.append(struct_node)
+            # Only process named typedef structs with declarations
+            if struct_node.name and struct_node.decls:
+                structs_to_generate.append(struct_node)
 
     processed_structs = []
     for struct_node in structs_to_generate:

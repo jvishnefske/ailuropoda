@@ -360,4 +360,5 @@ def test_generate_cbor_code_for_struct_simple(tmp_path, cpp_info):
 
     cmake_content = (output_dir / "CMakeLists.txt").read_text()
     assert "add_library(cbor_generated STATIC cbor_generated.c)" in cmake_content
-    assert "target_link_libraries(cbor_generated PRIVATE tinycbor)" in cmake_content
+    # Updated assertion to match the new CMake template logic
+    assert "target_link_libraries(cbor_generated PRIVATE ${TINYCBOR_LIBRARY})" in cmake_content
