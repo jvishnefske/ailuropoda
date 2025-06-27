@@ -257,7 +257,12 @@ def generate_cbor_code(header_file_path, output_dir, cpp_path=None, cpp_args=Non
 
     # Render C header file
     header_template = env.get_template('cbor_generated.h.jinja')
-    rendered_header = header_template.render(structs=processed_structs)
+    # Pass the original header file path relative to the output directory
+    relative_original_header_path = os.path.relpath(header_file_path, output_dir)
+    rendered_header = header_template.render(
+        structs=processed_structs,
+        original_header_path=relative_original_header_path
+    )
     (output_dir / 'cbor_generated.h').write_text(rendered_header)
     logger.info(f"Generated {output_dir / 'cbor_generated.h'}")
 

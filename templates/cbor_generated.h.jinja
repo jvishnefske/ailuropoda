@@ -5,9 +5,12 @@
 #include <stdint.h>
 #include "tinycbor/cbor.h"
 
-// Forward declarations for structs
+// Include the original header file that defines the structs
+#include "{{ original_header_path }}"
+
+// Forward declarations for structs (might be redundant if original_header_path defines them fully)
 {% for struct in structs %}
-struct {{ struct.name }};
+// struct {{ struct.name }}; // Removed: Assumed to be defined by original_header_path
 {% endfor %}
 
 // Encode/Decode function declarations
