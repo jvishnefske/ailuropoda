@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 import shutil
 import os
-import sys # Added import for sys
+import sys
 from jinja2 import Environment, FileSystemLoader
 
 # Define paths relative to the current test file
@@ -119,7 +119,7 @@ def setup_test_environment(tmp_path, tinycbor_install_path):
 
     yield output_dir, build_dir, test_executable_name, tinycbor_install_path
 
-def test_full_cbor_pipeline(setup_test_environment, subprocess):
+def test_full_cbor_pipeline(setup_test_environment): # Removed 'subprocess' from arguments
     output_dir, build_dir, test_executable_name, tinycbor_install_path = setup_test_environment
 
     # 4. Configure CMake
