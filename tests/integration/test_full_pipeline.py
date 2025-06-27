@@ -2,7 +2,6 @@ import pytest
 from pathlib import Path
 import subprocess
 import shutil
-import os
 import sys
 from jinja2 import Environment, FileSystemLoader
 
@@ -37,7 +36,7 @@ def tinycbor_install_path(tmp_path_factory):
         )
 
     # Configure and build TinyCBOR
-    os.makedirs(tinycbor_build_path, exist_ok=True)
+    tinycbor_build_path.mkdir(parents=True, exist_ok=True) # Use Path.mkdir
     print(f"Configuring and building TinyCBOR in {tinycbor_build_path}...")
     subprocess.run(
         ["cmake", str(tinycbor_repo_path),
@@ -101,7 +100,7 @@ def setup_test_environment(tmp_path, tinycbor_install_path):
     print(f"Rendering C test harness from template...")
     harness_template = env.get_template('c_test_harness_simple_data.c.jinja')
     rendered_harness = harness_template.render(
-        input_header_path=os.path.relpath(HEADER_FILE, output_dir) # Path relative to generated CMakeLists.txt
+        input_header_path=HEADER_FILE.relative_to(output_dir) # Use Path.relative_to
     )
     (output_dir / test_harness_c_file_name).write_text(rendered_harness)
     print(f"Generated C test harness: {output_dir / test_harness_c_file_name}")

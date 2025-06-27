@@ -1,5 +1,4 @@
 import argparse
-import os
 import sys
 import logging
 from pathlib import Path
@@ -198,10 +197,10 @@ def parse_c_string(c_code_string, cpp_path=None, cpp_args=None):
         )
         return ast
     except Exception as e:
-        logger.error(f"Error parsing C code: {e}")
+        logger.error(f"Error parsing C code from {tmp_file_path}: {e}")
         raise
     finally:
-        os.remove(tmp_file_path)
+        Path(tmp_file_path).unlink() # Use pathlib for file removal
 
 
 def generate_cbor_code(header_file_path, output_dir, cpp_path=None, cpp_args=None):
@@ -258,7 +257,7 @@ def generate_cbor_code(header_file_path, output_dir, cpp_path=None, cpp_args=Non
     # Render C header file
     header_template = env.get_template('cbor_generated.h.jinja')
     # Pass the original header file path relative to the output directory
-    relative_original_header_path = os.path.relpath(header_file_path, output_dir)
+    relative_original_header_path = header_file_path.relative_to(output_dir) # Use pathlib's relative_to
     rendered_header = header_template.render(
         structs=processed_structs,
         original_header_path=relative_original_header_path
