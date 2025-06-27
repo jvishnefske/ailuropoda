@@ -1,117 +1,122 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include "doctest.h" // Corrected include path
+#include "doctest/doctest.h" // Include doctest
+#include <string> // For std::string
+#include <vector> // For std::vector
+#include "cbor_generated.h" // Include the generated header
+#include "{{ input_header_path }}" // Include the original header with struct definitions
+#include "tinycbor/cbor.h" // Include tinycbor for direct usage if needed
 
-#include "cbor_generated.h"
-#include "{{ input_header_path }}" // Include the original header for struct definitions
-#include <string.h> // For strcmp, etc.
-#include <stdlib.h> // For malloc/free for char* members
+TEST_CASE("SimpleData encoding and decoding") {
+    MESSAGE("Test harness for {{ input_header_path }} running.");
 
-// Define a buffer for CBOR encoding/decoding
-#define CBOR_BUFFER_SIZE 512 // Increased buffer size for nested data
-static uint8_t cbor_buffer[CBOR_BUFFER_SIZE];
-
-DOCTEST_TEST_CASE("SimpleData encoding and decoding") {
-    struct SimpleData original_data = {
-        .id = 12345,
+    // Example usage of generated functions (simplified)
+    // Test SimpleData
+    struct SimpleData test_data = {
+        .id = 123,
+        .name = "TestName",
         .is_active = true,
-        .temperature = 25.5f,
+        .temperature = 25.5f, // Use float literal
         .flags = {1, 2, 3, 4}
     };
-    strncpy(original_data.name, "Test Name", sizeof(original_data.name) - 1);
-    original_data.name[sizeof(original_data.name) - 1] = '\0';
 
+    uint8_t buffer[256];
     CborEncoder encoder;
-    cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
+    cbor_encoder_init(&encoder, buffer, sizeof(buffer), 0);
 
-    bool encode_ok = encode_SimpleData(&original_data, &encoder);
-    REQUIRE(encode_ok); // Use REQUIRE to stop if encoding fails
+    CHECK(encode_SimpleData(&test_data, &encoder));
+    MESSAGE("SimpleData encoded successfully.");
 
-    size_t encoded_len = cbor_encoder_get_buffer_size(&encoder, cbor_buffer);
-    DOCTEST_MESSAGE("SimpleData encoded successfully. Encoded size: ", encoded_len, " bytes");
+    size_t encoded_len = cbor_encoder_get_buffer_size(&encoder, buffer);
+    MESSAGE("Encoded size: " << encoded_len << " bytes");
 
+    // Decode back
     struct SimpleData decoded_data;
-    memset(&decoded_data, 0, sizeof(decoded_data)); // Initialize to zero
+    // Initialize decoded_data to zeros to ensure char arrays are null-terminated
+    // if the decoded string is shorter than the buffer.
+    memset(&decoded_data, 0, sizeof(struct SimpleData));
 
-    CborParser parser;
-    CborValue it;
-    CborError err = cbor_parser_init(cbor_buffer, encoded_len, 0, &parser, &it);
-    REQUIRE(err == CborNoError); // Use REQUIRE to stop if parser init fails
+    CborParser parser; CborValue it;
+    CborError err = cbor_parser_init(buffer, encoded_len, 0, &parser, &it);
+    CHECK(err == CborNoError);
+    CHECK(decode_SimpleData(&decoded_data, &it));
+    MESSAGE("SimpleData decoded successfully.");
 
-    bool decode_ok = decode_SimpleData(&decoded_data, &it);
-    REQUIRE(decode_ok); // Use REQUIRE to stop if decoding fails
+    MESSAGE("Decoded ID: " << decoded_data.id);
+    MESSAGE("Decoded Name: " << decoded_data.name);
+    MESSAGE("Decoded Is Active: " << (decoded_data.is_active ? "true" : "false"));
+    MESSAGE("Decoded Temperature: " << decoded_data.temperature);
+    MESSAGE("Decoded Flags: [" << (int)decoded_data.flags[0] << ", " << (int)decoded_data.flags[1] << ", " << (int)decoded_data.flags[2] << ", " << (int)decoded_data.flags[3] << "]");
 
-    DOCTEST_MESSAGE("SimpleData decoded successfully.");
-
-    // Assertions
-    CHECK(decoded_data.id == original_data.id);
-    CHECK(strcmp(decoded_data.name, original_data.name) == 0);
-    CHECK(decoded_data.is_active == original_data.is_active);
-    // Use doctest::Approx for float comparison
-    CHECK(decoded_data.temperature == doctest::Approx(original_data.temperature));
-    for (int i = 0; i < 4; ++i) {
-        CHECK(decoded_data.flags[i] == original_data.flags[i]);
-    }
+    CHECK(decoded_data.id == test_data.id);
+    CHECK(strcmp(decoded_data.name, test_data.name) == 0);
+    CHECK(decoded_data.is_active == test_data.is_active);
+    CHECK(decoded_data.temperature == doctest::Approx(test_data.temperature)); // Use Approx for floats
+    CHECK(memcmp(decoded_data.flags, test_data.flags, sizeof(test_data.flags)) == 0);
 }
 
-// Test case for NestedData (requires manual char* allocation for description)
-DOCTEST_TEST_CASE("NestedData encoding and decoding") {
-    // Original data
-    struct NestedData original_nested_data = {
+TEST_CASE("NestedData encoding and decoding") {
+
+    // Test NestedData (requires manual allocation for char* description)
+    struct NestedData original_nested = {
         .inner_data = {
-            .id = 54321,
+            .id = 456,
+            .name = "NestedItem",
             .is_active = false,
             .temperature = 99.9f,
             .flags = {5, 6, 7, 8}
         },
+        .description = (char*)malloc(256), // Allocate memory for description for encoding
         .value = 789
     };
-    strncpy(original_nested_data.inner_data.name, "Nested Name", sizeof(original_nested_data.inner_data.name) - 1);
-    original_nested_data.inner_data.name[sizeof(original_nested_data.inner_data.name) - 1] = '\0';
+    if (!original_nested.description) {
+        FAIL("Failed to allocate memory for description.");
+        return; // Return from the test case
+    }
+    strcpy(original_nested.description, "This is a nested description.");
 
-    const char* original_description_str = "This is a test description for NestedData.";
-    original_nested_data.description = (char*)original_description_str; // Point to a const string for encoding
+    uint8_t nested_buffer[512];
+    CborEncoder nested_encoder;
+    cbor_encoder_init(&nested_encoder, nested_buffer, sizeof(nested_buffer), 0);
 
-    CborEncoder encoder;
-    cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
+    CHECK(encode_NestedData(&original_nested, &nested_encoder));
+    MESSAGE("NestedData encoded successfully.");
+    // Only free if not in a test context (e.g., if called directly)
+    // In doctest, if a CHECK fails, the test continues. If a REQUIRE fails, it aborts.
+    // For malloc, it's safer to free at the end of the test case or use RAII.
+    // For simplicity here, we'll free at the end of the test case.
 
-    bool encode_ok = encode_NestedData(&original_nested_data, &encoder);
-    REQUIRE(encode_ok);
+    size_t nested_encoded_len = cbor_encoder_get_buffer_size(&nested_encoder, nested_buffer);
+    MESSAGE("Nested Encoded size: " << nested_encoded_len << " bytes");
 
-    size_t encoded_len = cbor_encoder_get_buffer_size(&encoder, cbor_buffer);
-    DOCTEST_MESSAGE("Encoded NestedData size: ", encoded_len, " bytes");
-
-    // Decode
-    struct NestedData decoded_nested_data;
-    memset(&decoded_nested_data, 0, sizeof(decoded_nested_data));
-
-    // IMPORTANT: For char* members, you must allocate memory before decoding!
-    // The decode_char_ptr helper assumes the pointer is already pointing to a valid buffer.
-    // The hardcoded '256' in the template is a placeholder for max_len.
-    decoded_nested_data.description = (char*)malloc(256); // Allocate enough space
-    REQUIRE(decoded_nested_data.description != NULL);
-
-    CborParser parser;
-    CborValue it;
-    CborError err = cbor_parser_init(cbor_buffer, encoded_len, 0, &parser, &it);
-    REQUIRE(err == CborNoError);
-
-    bool decode_ok = decode_NestedData(&decoded_nested_data, &it);
-    REQUIRE(decode_ok);
-
-    DOCTEST_MESSAGE("NestedData decoded successfully.");
-
-    // Assertions for NestedData
-    CHECK(decoded_nested_data.value == original_nested_data.value);
-    CHECK(strcmp(decoded_nested_data.description, original_nested_data.description) == 0);
-
-    // Assertions for nested SimpleData
-    CHECK(decoded_nested_data.inner_data.id == original_nested_data.inner_data.id);
-    CHECK(strcmp(decoded_nested_data.inner_data.name, original_nested_data.inner_data.name) == 0);
-    CHECK(decoded_nested_data.inner_data.is_active == original_nested_data.inner_data.is_active);
-    CHECK(decoded_nested_data.inner_data.temperature == doctest::Approx(original_nested_data.inner_data.temperature));
-    for (int i = 0; i < 4; ++i) {
-        CHECK(decoded_nested_data.inner_data.flags[i] == original_nested_data.inner_data.flags[i]);
+    struct NestedData decoded_nested;
+    // Initialize decoded_nested to zeros before allocating description
+    memset(&decoded_nested, 0, sizeof(struct NestedData)); // Initialize all members to 0
+    decoded_nested.description = (char*)malloc(256); // Allocate memory for description for decoding
+    if (!decoded_nested.description) {
+        FAIL("Failed to allocate memory for decoded description.");
+        free(original_nested.description);
+        return; // Return from the test case
     }
 
-    free(decoded_nested_data.description); // Free allocated memory
+    CborParser nested_parser; CborValue nested_it;
+    CborError err = cbor_parser_init(nested_buffer, nested_encoded_len, 0, &nested_parser, &nested_it);
+    CHECK(err == CborNoError);
+    CHECK(decode_NestedData(&decoded_nested, &nested_it));
+    MESSAGE("NestedData decoded successfully.");
+
+    MESSAGE("Decoded Nested ID: " << decoded_nested.inner_data.id);
+    MESSAGE("Decoded Nested Name: " << decoded_nested.inner_data.name);
+    MESSAGE("Decoded Nested Description: " << decoded_nested.description);
+    MESSAGE("Decoded Nested Value: " << decoded_nested.value);
+
+    CHECK(decoded_nested.inner_data.id == original_nested.inner_data.id);
+    CHECK(strcmp(decoded_nested.inner_data.name, original_nested.inner_data.name) == 0);
+    CHECK(decoded_nested.inner_data.is_active == original_nested.inner_data.is_active);
+    CHECK(decoded_nested.inner_data.temperature == doctest::Approx(original_nested.inner_data.temperature));
+    CHECK(memcmp(decoded_nested.inner_data.flags, original_nested.inner_data.flags, sizeof(original_nested.inner_data.flags)) == 0);
+    CHECK(strcmp(decoded_nested.description, original_nested.description) == 0);
+    CHECK(decoded_nested.value == original_nested.value);
+
+    free(original_nested.description);
+    free(decoded_nested.description);
 }
