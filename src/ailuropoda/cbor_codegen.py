@@ -104,10 +104,29 @@ def get_type_info(node, ast):
     base_type_name = 'unknown'
     type_category = 'unknown'
 
+    # Mapping for common preprocessed types to their standard C equivalents
+    # This helps normalize names like '__uint32_t' to 'unsigned int' or 'uint32_t'
+    PREPROCESSED_TYPE_MAP = {
+        '__uint8_t': 'unsigned char',
+        '__uint16_t': 'unsigned short',
+        '__uint32_t': 'unsigned int', # Map to 'unsigned int' to match test expectation
+        '__uint64_t': 'unsigned long long',
+        '__int8_t': 'signed char',
+        '__int16_t': 'short',
+        '__int32_t': 'int',
+        '__int64_t': 'long long',
+        'signed char': 'char',
+        'long int': 'long',
+        'long long int': 'long long',
+        'unsigned long int': 'unsigned long',
+        'unsigned long long int': 'unsigned long long',
+    }
+
     if isinstance(current_node, c_ast.TypeDecl):
         # The actual type is inside current_node.type
         if isinstance(current_node.type, c_ast.IdentifierType):
-            base_type_name = ' '.join(current_node.type.names)
+            raw_name = ' '.join(current_node.type.names)
+            base_type_name = PREPROCESSED_TYPE_MAP.get(raw_name, raw_name)
         elif isinstance(current_node.type, c_ast.Struct):
             base_type_name = current_node.type.name
         else:
@@ -115,7 +134,8 @@ def get_type_info(node, ast):
     elif isinstance(current_node, c_ast.Struct):
         base_type_name = current_node.name
     elif isinstance(current_node, c_ast.IdentifierType):
-        base_type_name = ' '.join(current_node.names)
+        raw_name = ' '.join(current_node.names)
+        base_type_name = PREPROCESSED_TYPE_MAP.get(raw_name, raw_name)
     else:
         logger.warning(f"Unexpected base node type: {type(current_node)}")
 
@@ -124,11 +144,12 @@ def get_type_info(node, ast):
         type_category = 'char_array'
     elif base_type_name == 'char' and is_pointer:
         type_category = 'char_ptr'
-    elif base_type_name in ['int', 'long', 'short', 'char', 'float', 'double', 'bool',
+    elif base_type_name in ['int', 'long', 'short', 'char', 'float', 'double', 'bool', '_Bool', # _Bool for direct bool expansion
                             'int8_t', 'int16_t', 'int32_t', 'int64_t',
                             'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t',
-                            '_Bool', 'float_t', 'double_t',
-                            'unsigned int', 'unsigned char', 'unsigned short', 'unsigned long', 'unsigned long long']:
+                            'float_t', 'double_t',
+                            'unsigned int', 'unsigned char', 'unsigned short', 'unsigned long', 'unsigned long long',
+                            'signed char']: # Include signed char as a primitive
         type_category = 'primitive'
     elif type_category == 'unknown' and base_type_name != 'unknown': # If it's a struct or something else
         if isinstance(current_node, c_ast.Struct) or (isinstance(current_node, c_ast.TypeDecl) and isinstance(current_node.type, c_ast.Struct)):
@@ -228,7 +249,8 @@ def generate_cbor_code(header_file_path, output_dir, cpp_path=None, cpp_args=Non
         processed_structs.append(struct_info)
 
     # Setup Jinja2 environment
-    templates_dir = Path(__file__).parent.parent / 'templates'
+    # Corrected path: go up three levels from cbor_codegen.py to reach project root, then into 'templates'
+    templates_dir = Path(__file__).parent.parent.parent / 'templates'
     env = Environment(loader=FileSystemLoader(templates_dir), trim_blocks=True, lstrip_blocks=True)
 
     # Render C header file
