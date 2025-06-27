@@ -74,12 +74,12 @@ def setup_test_environment(tmp_path, tinycbor_install_path):
     generated_library_name = "cbor_generated"
 
     # 1. Run the code generator script as a subprocess
-    print(f"Running src/cbor_codegen.py for {HEADER_FILE} into {output_dir}")
+    print(f"Running src/ailuropoda/cbor_codegen.py for {HEADER_FILE} into {output_dir}")
     try:
         subprocess.run(
             [
                 sys.executable, # Use the current Python interpreter
-                str(SRC_DIR / 'cbor_codegen.py'),
+                str(SRC_DIR / 'ailuropoda' / 'cbor_codegen.py'), # Corrected path
                 str(HEADER_FILE),
                 "--output-dir", str(output_dir),
                 # Pass TinyCBOR include path to pycparser for parsing

@@ -42,7 +42,8 @@ def test_find_struct_by_name(cpp_info):
     struct MyStruct { int a; };
     typedef struct AnotherStruct { float b; } AnotherStruct_t;
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
 
     my_struct = find_struct("MyStruct", ast)
     assert my_struct is not None
@@ -57,7 +58,8 @@ def test_find_typedef_by_name(cpp_info):
     typedef unsigned int uint32_t;
     typedef struct MyStruct { int a; } MyStruct_t;
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
 
     uint32_t_def = find_typedef("uint32_t", ast)
     assert uint32_t_def is not None
@@ -79,7 +81,8 @@ def test_expand_in_place_typedef_primitive(cpp_info):
     typedef int MyInt;
     struct Data { MyInt value; };
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
     struct_node = find_struct("Data", ast)
     assert struct_node is not None
 
@@ -89,7 +92,8 @@ def test_expand_in_place_typedef_primitive(cpp_info):
     assert isinstance(member_type_before.type, c_ast.IdentifierType)
     assert member_type_before.type.names == ['MyInt']
 
-    expand_in_place(struct_node, ast)
+    # Call expand_in_place and assign the returned (modified) node
+    struct_node.decls[0].type = expand_in_place(struct_node.decls[0].type, ast)
 
     # After expansion, the type should be TypeDecl -> IdentifierType('int')
     member_type_after = struct_node.decls[0].type
@@ -104,7 +108,8 @@ def test_expand_in_place_typedef_struct(cpp_info):
     typedef struct Inner MyInner_t;
     struct Outer { MyInner_t nested; };
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
     struct_node = find_struct("Outer", ast)
     assert struct_node is not None
 
@@ -114,7 +119,8 @@ def test_expand_in_place_typedef_struct(cpp_info):
     assert isinstance(member_type_before.type, c_ast.IdentifierType)
     assert member_type_before.type.names == ['MyInner_t']
 
-    expand_in_place(struct_node, ast)
+    # Call expand_in_place and assign the returned (modified) node
+    struct_node.decls[0].type = expand_in_place(struct_node.decls[0].type, ast)
 
     # After expansion, the type should be TypeDecl -> Struct('Inner')
     member_type_after = struct_node.decls[0].type
@@ -128,7 +134,8 @@ def test_expand_in_place_nested_typedef_array(cpp_info):
     typedef char MyChar;
     struct Data { MyChar name[16]; };
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
     struct_node = find_struct("Data", ast)
     assert struct_node is not None
 
@@ -138,7 +145,8 @@ def test_expand_in_place_nested_typedef_array(cpp_info):
     assert isinstance(member_type_before.type.type, c_ast.IdentifierType)
     assert member_type_before.type.type.names == ['MyChar']
 
-    expand_in_place(struct_node, ast)
+    # Call expand_in_place and assign the returned (modified) node
+    struct_node.decls[0].type = expand_in_place(struct_node.decls[0].type, ast)
 
     member_type_after = struct_node.decls[0].type
     assert isinstance(member_type_after, c_ast.ArrayDecl)
@@ -158,10 +166,13 @@ def test_get_type_info_primitive(cpp_info):
         bool active;
     };
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
     struct_node = find_struct("Data", ast)
     assert struct_node is not None
-    expand_in_place(struct_node, ast) # Ensure typedefs are expanded
+    # Ensure typedefs are expanded and assigned back
+    for i, decl in enumerate(struct_node.decls):
+        struct_node.decls[i].type = expand_in_place(decl.type, ast)
 
     members = struct_node.decls
     assert len(members) == 4
@@ -200,10 +211,12 @@ def test_get_type_info_char_array(cpp_info):
         char name[32];
     };
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
     struct_node = find_struct("Data", ast)
     assert struct_node is not None
-    expand_in_place(struct_node, ast)
+    for i, decl in enumerate(struct_node.decls):
+        struct_node.decls[i].type = expand_in_place(decl.type, ast)
 
     member = struct_node.decls[0]
     base_type, category, array_size, is_ptr = get_type_info(member.type, ast)
@@ -218,10 +231,12 @@ def test_get_type_info_char_ptr(cpp_info):
         char* description;
     };
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
     struct_node = find_struct("Data", ast)
     assert struct_node is not None
-    expand_in_place(struct_node, ast)
+    for i, decl in enumerate(struct_node.decls):
+        struct_node.decls[i].type = expand_in_place(decl.type, ast)
 
     member = struct_node.decls[0]
     base_type, category, array_size, is_ptr = get_type_info(member.type, ast)
@@ -235,10 +250,12 @@ def test_get_type_info_struct(cpp_info):
     struct Inner { int x; };
     struct Outer { struct Inner nested; };
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
     struct_node = find_struct("Outer", ast)
     assert struct_node is not None
-    expand_in_place(struct_node, ast)
+    for i, decl in enumerate(struct_node.decls):
+        struct_node.decls[i].type = expand_in_place(decl.type, ast)
 
     member = struct_node.decls[0]
     base_type, category, array_size, is_ptr = get_type_info(member.type, ast)
@@ -252,10 +269,12 @@ def test_get_type_info_struct_ptr(cpp_info):
     struct Inner { int x; };
     struct Outer { struct Inner* nested_ptr; };
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
     struct_node = find_struct("Outer", ast)
     assert struct_node is not None
-    expand_in_place(struct_node, ast)
+    for i, decl in enumerate(struct_node.decls):
+        struct_node.decls[i].type = expand_in_place(decl.type, ast)
 
     member = struct_node.decls[0]
     base_type, category, array_size, is_ptr = get_type_info(member.type, ast)
@@ -270,10 +289,12 @@ def test_get_type_info_primitive_array(cpp_info):
         int values[10];
     };
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
     struct_node = find_struct("Data", ast)
     assert struct_node is not None
-    expand_in_place(struct_node, ast)
+    for i, decl in enumerate(struct_node.decls):
+        struct_node.decls[i].type = expand_in_place(decl.type, ast)
 
     member = struct_node.decls[0]
     base_type, category, array_size, is_ptr = get_type_info(member.type, ast)
@@ -289,10 +310,12 @@ def test_get_type_info_struct_array(cpp_info):
         struct Item items[5];
     };
     """
-    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info['cpp_args'])
+    ast = parse_c_string(c_code, cpp_path=cpp_info['cpp_path'], cpp_args=cpp_info[
+        'cpp_args'])
     struct_node = find_struct("Data", ast)
     assert struct_node is not None
-    expand_in_place(struct_node, ast)
+    for i, decl in enumerate(struct_node.decls):
+        struct_node.decls[i].type = expand_in_place(decl.type, ast)
 
     member = struct_node.decls[0]
     base_type, category, array_size, is_ptr = get_type_info(member.type, ast)
@@ -304,7 +327,7 @@ def test_get_type_info_struct_array(cpp_info):
 def test_generate_cbor_code_for_struct_simple(tmp_path, cpp_info):
     c_code = """
     #include <stdint.h>
-    #include <stdbool.h;>
+    #include <stdbool.h>
     struct SimpleData {
         int32_t id;
         char name[32];

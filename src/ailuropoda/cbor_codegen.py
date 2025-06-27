@@ -32,32 +32,46 @@ def find_typedef(typedef_name, ast):
             return ext
     return None
 
+def _get_base_type_from_decl(decl_node):
+    """
+    Helper to get the innermost type node (IdentifierType or Struct)
+    from a chain of TypeDecl, PtrDecl, or ArrayDecl nodes.
+    """
+    current = decl_node
+    while isinstance(current, (c_ast.TypeDecl, c_ast.PtrDecl, c_ast.ArrayDecl)):
+        current = current.type
+    return current
+
 def expand_in_place(node, ast):
     """
     Recursively expands typedefs within a given AST node.
-    Modifies the AST in place.
+    Modifies the AST in place and returns the modified node.
     """
     if isinstance(node, c_ast.TypeDecl):
-        # The actual type is in node.type
         if isinstance(node.type, c_ast.IdentifierType):
             typedef_name = node.type.names[0]
             typedef_node = find_typedef(typedef_name, ast)
             if typedef_node:
-                # Replace the IdentifierType with the underlying type from the typedef
-                node.type = typedef_node.type
-                # Recursively expand the newly replaced type, in case it's a typedef of a typedef
-                expand_in_place(node.type, ast)
+                # Get the fully resolved base type from the typedef's definition
+                # This handles cases like `typedef int MyInt;` where typedef_node.type is TypeDecl
+                # and `typedef struct S MyS;` where typedef_node.type is TypeDecl
+                resolved_base_type = _get_base_type_from_decl(typedef_node.type)
+                node.type = resolved_base_type # Replace the IdentifierType with the base type
+            # If node.type is not an IdentifierType (e.g., it's already a Struct, PtrDecl, ArrayDecl),
+            # or if it was an IdentifierType but not a typedef, no further action needed here.
+            # The recursive calls below will handle nested structures.
         elif hasattr(node.type, 'type'): # For PtrDecl, ArrayDecl, etc. nested within TypeDecl
-            expand_in_place(node.type, ast)
+            node.type = expand_in_place(node.type, ast)
     elif isinstance(node, c_ast.PtrDecl):
-        expand_in_place(node.type, ast)
+        node.type = expand_in_place(node.type, ast)
     elif isinstance(node, c_ast.ArrayDecl):
-        expand_in_place(node.type, ast)
+        node.type = expand_in_place(node.type, ast)
     elif isinstance(node, c_ast.Struct):
         if node.decls:
-            for decl in node.decls:
-                expand_in_place(decl.type, ast)
-    # Add other AST node types as needed for comprehensive traversal
+            for i, decl in enumerate(node.decls):
+                node.decls[i].type = expand_in_place(decl.type, ast)
+    # For IdentifierType or Struct nodes directly, no expansion needed, just return
+    return node
 
 
 def get_type_info(node, ast):
@@ -84,29 +98,43 @@ def get_type_info(node, ast):
                     array_size = None
             current_node = current_node.type
         else:
-            break # Reached the base TypeDecl or Struct
+            break # Reached the base TypeDecl, IdentifierType, or Struct
 
-    # Now current_node should be a TypeDecl or Struct
+    # Now current_node should be a TypeDecl, IdentifierType, or Struct
+    base_type_name = 'unknown'
+    type_category = 'unknown'
+
     if isinstance(current_node, c_ast.TypeDecl):
-        base_type_names = current_node.type.names
-        base_type_name = ' '.join(base_type_names)
-        if base_type_name == 'char' and array_size is not None:
-            type_category = 'char_array'
-        elif base_type_name == 'char' and is_pointer:
-            type_category = 'char_ptr'
-        elif base_type_name in ['int', 'long', 'short', 'char', 'float', 'double', 'bool',
-                                'int8_t', 'int16_t', 'int32_t', 'int64_t',
-                                'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t',
-                                '_Bool', 'float_t', 'double_t']:
-            type_category = 'primitive'
+        # The actual type is inside current_node.type
+        if isinstance(current_node.type, c_ast.IdentifierType):
+            base_type_name = ' '.join(current_node.type.names)
+        elif isinstance(current_node.type, c_ast.Struct):
+            base_type_name = current_node.type.name
         else:
-            type_category = 'unknown_primitive' # Fallback for other primitive-like typedefs
+            logger.warning(f"Unexpected type inside TypeDecl: {type(current_node.type)}")
     elif isinstance(current_node, c_ast.Struct):
         base_type_name = current_node.name
-        type_category = 'struct'
+    elif isinstance(current_node, c_ast.IdentifierType):
+        base_type_name = ' '.join(current_node.names)
     else:
-        base_type_name = 'unknown'
-        type_category = 'unknown'
+        logger.warning(f"Unexpected base node type: {type(current_node)}")
+
+    # Determine type category based on base_type_name
+    if base_type_name == 'char' and array_size is not None:
+        type_category = 'char_array'
+    elif base_type_name == 'char' and is_pointer:
+        type_category = 'char_ptr'
+    elif base_type_name in ['int', 'long', 'short', 'char', 'float', 'double', 'bool',
+                            'int8_t', 'int16_t', 'int32_t', 'int64_t',
+                            'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t',
+                            '_Bool', 'float_t', 'double_t',
+                            'unsigned int', 'unsigned char', 'unsigned short', 'unsigned long', 'unsigned long long']:
+        type_category = 'primitive'
+    elif type_category == 'unknown' and base_type_name != 'unknown': # If it's a struct or something else
+        if isinstance(current_node, c_ast.Struct) or (isinstance(current_node, c_ast.TypeDecl) and isinstance(current_node.type, c_ast.Struct)):
+            type_category = 'struct'
+        else:
+            type_category = 'unknown_primitive' # Fallback for other primitive-like typedefs
 
     # Adjust category for arrays and pointers if they were the outermost type
     if array_size is not None:
@@ -185,7 +213,8 @@ def generate_cbor_code(header_file_path, output_dir, cpp_path=None, cpp_args=Non
         if struct_node.decls:
             for decl in struct_node.decls:
                 # Expand typedefs for the member's type before processing
-                expand_in_place(decl.type, ast)
+                # Assign the returned node back to decl.type
+                decl.type = expand_in_place(decl.type, ast)
                 base_type_name, type_category, array_size, is_pointer = get_type_info(decl.type, ast)
 
                 member_info = {
