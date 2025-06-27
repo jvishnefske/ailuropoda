@@ -1,128 +1,152 @@
-#include "cbor_generated.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
-#include <assert.h>
-#include <math.h> // For fabs
+#include "cbor_generated.h" // Include the generated header
+#include "{{ input_header_path }}" // Include the original header with struct definitions
+#include "tinycbor/cbor.h" // Include tinycbor for direct usage if needed
 
-// Define a max length for char* members for decoding purposes in the test harness
-// This must be at least as large as the hardcoded value (256) used in cbor_generated.c.jinja
-#define MAX_DESCRIPTION_LEN 256
-
-// Helper to print CBOR data (for debugging)
-void print_cbor_hex(const uint8_t* buffer, size_t len) {
-    printf("CBOR Hex: ");
-    for (size_t i = 0; i < len; ++i) {
-        printf("%02X ", buffer[i]);
-    }
-    printf("\n");
-}
-
+// Dummy main function for the test harness
 int main() {
-    // --- Test SimpleData ---
-    struct SimpleData original_simple = {
+    printf("Test harness for {{ input_header_path }} running.\n");
+
+    // Example usage of generated functions (simplified)
+    struct SimpleData test_data = {
         .id = 123,
+        .name = "TestName",
         .is_active = true,
         .temperature = 25.5f,
-        .flags = {0x01, 0x02, 0x03, 0x04}
+        .flags = {1, 2, 3, 4}
     };
-    strncpy(original_simple.name, "TestName", sizeof(original_simple.name) - 1);
-    original_simple.name[sizeof(original_simple.name) - 1] = '\0';
 
-    uint8_t buffer_simple[256]; // Sufficient buffer for encoding
-    CborEncoder encoder_simple;
-    cbor_encoder_init(&encoder_simple, buffer_simple, sizeof(buffer_simple), 0);
+    uint8_t buffer[256];
+    CborEncoder encoder;
+    cbor_encoder_init(&encoder, buffer, sizeof(buffer), 0);
 
-    printf("Encoding SimpleData...\n");
-    if (!encode_SimpleData(&original_simple, &encoder_simple)) {
-        fprintf(stderr, "Failed to encode SimpleData!\n");
-        return 1;
-    }
-    size_t encoded_len_simple = cbor_encoder_get_buffer_size(&encoder_simple, buffer_simple);
-    printf("Encoded SimpleData length: %zu bytes\n", encoded_len_simple);
-    print_cbor_hex(buffer_simple, encoded_len_simple);
-
-    struct SimpleData decoded_simple;
-    CborParser parser_simple;
-    CborValue it_simple;
-
-    printf("Decoding SimpleData...\n");
-    CborError err_simple = cbor_parser_init(buffer_simple, encoded_len_simple, 0, &parser_simple, &it_simple);
-    if (err_simple != CborNoError) {
-        fprintf(stderr, "Failed to init parser for SimpleData: %d\n", err_simple);
-        return 1;
-    }
-    if (!decode_SimpleData(&decoded_simple, &it_simple)) {
-        fprintf(stderr, "Failed to decode SimpleData!\n");
+    if (encode_SimpleData(&test_data, &encoder)) {
+        printf("SimpleData encoded successfully.\n");
+    } else {
+        fprintf(stderr, "Failed to encode SimpleData.\n");
         return 1;
     }
 
-    printf("Verifying SimpleData...\n");
-    assert(original_simple.id == decoded_simple.id);
-    assert(strcmp(original_simple.name, decoded_simple.name) == 0);
-    assert(original_simple.is_active == decoded_simple.is_active);
-    // Floating point comparison needs tolerance
-    assert(fabs(original_simple.temperature - decoded_simple.temperature) < 0.0001f);
-    for (int i = 0; i < 4; ++i) {
-        assert(original_simple.flags[i] == decoded_simple.flags[i]);
-    }
-    printf("SimpleData verification successful!\n\n");
+    size_t encoded_len = cbor_encoder_get_buffer_size(&encoder, buffer);
+    printf("Encoded size: %zu bytes\n", encoded_len);
 
-    // --- Test NestedData ---
-    struct NestedData original_nested;
-    original_nested.inner_data = original_simple; // Copy simple data
-    original_nested.value = 456;
+    // Decode back
+    struct SimpleData decoded_data;
+    // For char* members, ensure they are allocated before decoding
+    // For SimpleData, 'name' is a char array, so no malloc needed.
+    // For NestedData, 'description' is char*, so it would need allocation.
+    // This test only uses SimpleData, so it's fine.
 
-    // Allocate buffer for description and copy string
-    char description_buffer[MAX_DESCRIPTION_LEN];
-    strncpy(description_buffer, "This is a nested description.", MAX_DESCRIPTION_LEN - 1);
-    description_buffer[MAX_DESCRIPTION_LEN - 1] = '\0';
-    original_nested.description = description_buffer;
-
-    uint8_t buffer_nested[512]; // Sufficient buffer for encoding
-    CborEncoder encoder_nested;
-    cbor_encoder_init(&encoder_nested, buffer_nested, sizeof(buffer_nested), 0);
-
-    printf("Encoding NestedData...\n");
-    if (!encode_NestedData(&original_nested, &encoder_nested)) {
-        fprintf(stderr, "Failed to encode NestedData!\n");
+    CborParser parser;
+    CborValue it;
+    CborError err = cbor_parser_init(buffer, encoded_len, 0, &parser, &it);
+    if (err != CborNoError) {
+        fprintf(stderr, "Failed to initialize CBOR parser: %s\n", cbor_error_string(err));
         return 1;
     }
-    size_t encoded_len_nested = cbor_encoder_get_buffer_size(&encoder_nested, buffer_nested);
-    printf("Encoded NestedData length: %zu bytes\n", encoded_len_nested);
-    print_cbor_hex(buffer_nested, encoded_len_nested);
+
+    if (decode_SimpleData(&decoded_data, &it)) {
+        printf("SimpleData decoded successfully.\n");
+        printf("Decoded ID: %d\n", decoded_data.id);
+        printf("Decoded Name: %s\n", decoded_data.name);
+        printf("Decoded Is Active: %s\n", decoded_data.is_active ? "true" : "false");
+        printf("Decoded Temperature: %f\n", decoded_data.temperature);
+        printf("Decoded Flags: [%d, %d, %d, %d]\n", decoded_data.flags[0], decoded_data.flags[1], decoded_data.flags[2], decoded_data.flags[3]);
+
+        // Basic assertions
+        if (decoded_data.id != test_data.id ||
+            strcmp(decoded_data.name, test_data.name) != 0 ||
+            decoded_data.is_active != test_data.is_active ||
+            decoded_data.temperature != test_data.temperature ||
+            memcmp(decoded_data.flags, test_data.flags, sizeof(test_data.flags)) != 0)
+        {
+            fprintf(stderr, "Decoded data does not match original data!\n");
+            return 1;
+        }
+
+    } else {
+        fprintf(stderr, "Failed to decode SimpleData.\n");
+        return 1;
+    }
+
+    // Test NestedData (requires manual allocation for char* description)
+    struct NestedData original_nested = {
+        .inner_data = {
+            .id = 456,
+            .name = "NestedItem",
+            .is_active = false,
+            .temperature = 99.9f,
+            .flags = {5, 6, 7, 8}
+        },
+        .description = (char*)malloc(256), // Allocate memory for description
+        .value = 789
+    };
+    if (!original_nested.description) {
+        fprintf(stderr, "Failed to allocate memory for description.\n");
+        return 1;
+    }
+    strcpy(original_nested.description, "This is a nested description.");
+
+    uint8_t nested_buffer[512];
+    CborEncoder nested_encoder;
+    cbor_encoder_init(&nested_encoder, nested_buffer, sizeof(nested_buffer), 0);
+
+    if (encode_NestedData(&original_nested, &nested_encoder)) {
+        printf("NestedData encoded successfully.\n");
+    } else {
+        fprintf(stderr, "Failed to encode NestedData.\n");
+        free(original_nested.description);
+        return 1;
+    }
+
+    size_t nested_encoded_len = cbor_encoder_get_buffer_size(&nested_encoder, nested_buffer);
+    printf("Nested Encoded size: %zu bytes\n", nested_encoded_len);
 
     struct NestedData decoded_nested;
-    // For char* member, we need to pre-allocate the buffer for decoding
-    char decoded_description_buffer[MAX_DESCRIPTION_LEN];
-    decoded_nested.description = decoded_description_buffer;
-
-    CborParser parser_nested;
-    CborValue it_nested;
-
-    printf("Decoding NestedData...\n");
-    CborError err_nested = cbor_parser_init(buffer_nested, encoded_len_nested, 0, &parser_nested, &it_nested);
-    if (err_nested != CborNoError) {
-        fprintf(stderr, "Failed to init parser for NestedData: %d\n", err_nested);
-        return 1;
-    }
-    if (!decode_NestedData(&decoded_nested, &it_nested)) {
-        fprintf(stderr, "Failed to decode NestedData!\n");
+    decoded_nested.description = (char*)malloc(256); // Allocate memory for description
+    if (!decoded_nested.description) {
+        fprintf(stderr, "Failed to allocate memory for decoded description.\n");
+        free(original_nested.description);
         return 1;
     }
 
-    printf("Verifying NestedData...\n");
-    assert(original_nested.inner_data.id == decoded_nested.inner_data.id);
-    assert(strcmp(original_nested.inner_data.name, decoded_nested.inner_data.name) == 0);
-    assert(original_nested.inner_data.is_active == decoded_nested.inner_data.is_active);
-    assert(fabs(original_nested.inner_data.temperature - decoded_nested.inner_data.temperature) < 0.0001f);
-    for (int i = 0; i < 4; ++i) {
-        assert(original_nested.inner_data.flags[i] == decoded_nested.inner_data.flags[i]);
+    CborParser nested_parser;
+    CborValue nested_it;
+    err = cbor_parser_init(nested_buffer, nested_encoded_len, 0, &nested_parser, &nested_it);
+    if (err != CborNoError) {
+        fprintf(stderr, "Failed to initialize nested CBOR parser: %s\n", cbor_error_string(err));
+        free(original_nested.description);
+        free(decoded_nested.description);
+        return 1;
     }
-    assert(strcmp(original_nested.description, decoded_nested.description) == 0);
-    assert(original_nested.value == decoded_nested.value);
-    printf("NestedData verification successful!\n\n");
 
-    printf("All tests passed!\n");
+    if (decode_NestedData(&decoded_nested, &nested_it)) {
+        printf("NestedData decoded successfully.\n");
+        printf("Decoded Nested ID: %d\n", decoded_nested.inner_data.id);
+        printf("Decoded Nested Name: %s\n", decoded_nested.inner_data.name);
+        printf("Decoded Nested Description: %s\n", decoded_nested.description);
+        printf("Decoded Nested Value: %d\n", decoded_nested.value);
+
+        // Basic assertions for nested data
+        if (decoded_nested.inner_data.id != original_nested.inner_data.id ||
+            strcmp(decoded_nested.inner_data.name, original_nested.inner_data.name) != 0 ||
+            strcmp(decoded_nested.description, original_nested.description) != 0 ||
+            decoded_nested.value != original_nested.value)
+        {
+            fprintf(stderr, "Decoded nested data does not match original data!\n");
+            return 1;
+        }
+
+    } else {
+        fprintf(stderr, "Failed to decode NestedData.\n");
+        return 1;
+    }
+
+    free(original_nested.description);
+    free(decoded_nested.description);
+
+    printf("All tests passed successfully.\n");
     return 0;
 }

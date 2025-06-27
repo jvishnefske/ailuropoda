@@ -3,256 +3,172 @@ from pathlib import Path
 import subprocess
 import shutil
 import os
-import sys
-
-# Add the src directory to the Python path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
-
-from cbor_codegen import generate_cbor_code
+from jinja2 import Environment, FileSystemLoader
 
 # Define paths relative to the current test file
 TEST_DIR = Path(__file__).parent
 PROJECT_ROOT = TEST_DIR.parent.parent
+SRC_DIR = PROJECT_ROOT / 'src'
+TEMPLATES_DIR = PROJECT_ROOT / 'templates'
+
 HEADER_FILE = TEST_DIR / 'simple_data.h'
-TEST_HARNESS_TEMPLATE = TEST_DIR / 'test_harness_template.c.jinja'
+
+# Setup Jinja2 environment for templates
+env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), trim_blocks=True, lstrip_blocks=True)
+
+@pytest.fixture(scope="module") # Changed scope to module to build TinyCBOR once
+def tinycbor_install_path(tmp_path_factory):
+    """
+    Fixture to clone, build, and install TinyCBOR into a temporary directory.
+    This path will be used by CMake to find TinyCBOR.
+    """
+    build_path = tmp_path_factory.mktemp("tinycbor_build_env")
+    tinycbor_repo_path = build_path / "tinycbor"
+    tinycbor_build_path = build_path / "build"
+    install_path = build_path / "install"
+
+    # Clone TinyCBOR
+    if not tinycbor_repo_path.exists():
+        print(f"Cloning TinyCBOR into {tinycbor_repo_path}...")
+        subprocess.run(
+            ["git", "clone", "https://github.com/intel/tinycbor.git", str(tinycbor_repo_path)],
+            check=True, capture_output=True
+        )
+
+    # Configure and build TinyCBOR
+    os.makedirs(tinycbor_build_path, exist_ok=True)
+    print(f"Configuring and building TinyCBOR in {tinycbor_build_path}...")
+    subprocess.run(
+        ["cmake", str(tinycbor_repo_path),
+         "-DCMAKE_INSTALL_PREFIX=" + str(install_path),
+         "-DCBOR_CONVERTER=OFF", # We don't need the converter for this test
+         "-DCMAKE_BUILD_TYPE=Release"],
+        cwd=tinycbor_build_path,
+        check=True, capture_output=True
+    )
+    subprocess.run(
+        ["cmake", "--build", ".", "--target", "install"],
+        cwd=tinycbor_build_path,
+        check=True, capture_output=True
+    )
+    print(f"TinyCBOR installed to {install_path}")
+    yield install_path
 
 @pytest.fixture
-def setup_test_environment(tmp_path):
+def setup_test_environment(tmp_path, tinycbor_install_path):
     """
-    Sets up a temporary directory for generated files and a build directory.
+    Sets up a temporary directory for generated files and a build directory,
+    and orchestrates the code generation and C test harness creation.
     """
-    output_dir = tmp_path / "cbor_generated_test"
+    output_dir = tmp_path / "cbor_generated_output"
     build_dir = output_dir / "build"
     output_dir.mkdir()
     build_dir.mkdir()
 
+    generated_c_file_name = "cbor_generated.c"
+    generated_h_file_name = "cbor_generated.h"
+    generated_cmake_file_name = "CMakeLists.txt"
+    test_harness_c_file_name = "test_harness.c"
     test_executable_name = f"cbor_test_{HEADER_FILE.stem}"
-    
-    # 1. Run the code generator
-    print(f"Running cbor_codegen.py for {HEADER_FILE} into {output_dir}")
-    success = generate_cbor_code(HEADER_FILE, output_dir, test_harness_name=test_executable_name)
-    assert success, "Code generation failed"
+    generated_library_name = "cbor_generated"
 
-    # 2. Generate the C test harness file from its template
-    # This part is usually handled by the main script or a separate test setup.
-    # For this integration test, we'll manually create a dummy test harness C file
-    # that includes the generated header and has a main function.
-    # In a real scenario, this would be a more complex test application.
-    test_harness_c_content = f"""
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "{output_dir.name}/cbor_generated.h" // Include the generated header
-#include "{HEADER_FILE.name}" // Include the original header with struct definitions
-#include "tinycbor/cbor.h" // Include tinycbor for direct usage if needed
-
-// Dummy main function for the test harness
-int main() {{
-    printf("Test harness for {HEADER_FILE.name} running.\\n");
-
-    // Example usage of generated functions (simplified)
-    struct SimpleData test_data = {{
-        .id = 123,
-        .name = "TestName",
-        .is_active = true,
-        .temperature = 25.5f,
-        .flags = {{1, 2, 3, 4}}
-    }};
-
-    uint8_t buffer[256];
-    CborEncoder encoder;
-    cbor_encoder_init(&encoder, buffer, sizeof(buffer), 0);
-
-    if (encode_SimpleData(&test_data, &encoder)) {{
-        printf("SimpleData encoded successfully.\\n");
-    }} else {{
-        fprintf(stderr, "Failed to encode SimpleData.\\n");
-        return 1;
-    }}
-
-    size_t encoded_len = cbor_encoder_get_buffer_size(&encoder, buffer);
-    printf("Encoded size: %zu bytes\\n", encoded_len);
-
-    // Decode back
-    struct SimpleData decoded_data;
-    // For char* members, ensure they are allocated before decoding
-    // For SimpleData, 'name' is a char array, so no malloc needed.
-    // For NestedData, 'description' is char*, so it would need allocation.
-    // This test only uses SimpleData, so it's fine.
-
-    CborParser parser;
-    CborValue it;
-    CborError err = cbor_parser_init(buffer, encoded_len, 0, &parser, &it);
-    if (err != CborNoError) {{
-        fprintf(stderr, "Failed to initialize CBOR parser: %s\\n", cbor_error_string(err));
-        return 1;
-    }}
-
-    if (decode_SimpleData(&decoded_data, &it)) {{
-        printf("SimpleData decoded successfully.\\n");
-        printf("Decoded ID: %d\\n", decoded_data.id);
-        printf("Decoded Name: %s\\n", decoded_data.name);
-        printf("Decoded Is Active: %s\\n", decoded_data.is_active ? "true" : "false");
-        printf("Decoded Temperature: %f\\n", decoded_data.temperature);
-        printf("Decoded Flags: [%d, %d, %d, %d]\\n", decoded_data.flags[0], decoded_data.flags[1], decoded_data.flags[2], decoded_data.flags[3]);
-
-        // Basic assertions
-        if (decoded_data.id != test_data.id ||
-            strcmp(decoded_data.name, test_data.name) != 0 ||
-            decoded_data.is_active != test_data.is_active ||
-            decoded_data.temperature != test_data.temperature ||
-            memcmp(decoded_data.flags, test_data.flags, sizeof(test_data.flags)) != 0)
-        {{
-            fprintf(stderr, "Decoded data does not match original data!\\n");
-            return 1;
-        }}
-
-    }} else {{
-        fprintf(stderr, "Failed to decode SimpleData.\\n");
-        return 1;
-    }}
-
-    // Test NestedData (requires manual allocation for char* description)
-    struct NestedData original_nested = {{
-        .inner_data = {{
-            .id = 456,
-            .name = "NestedItem",
-            .is_active = false,
-            .temperature = 99.9f,
-            .flags = {{5, 6, 7, 8}}
-        }},
-        .description = (char*)malloc(256), // Allocate memory for description
-        .value = 789
-    }};
-    if (!original_nested.description) {{
-        fprintf(stderr, "Failed to allocate memory for description.\\n");
-        return 1;
-    }}
-    strcpy(original_nested.description, "This is a nested description.");
-
-    uint8_t nested_buffer[512];
-    CborEncoder nested_encoder;
-    cbor_encoder_init(&nested_encoder, nested_buffer, sizeof(nested_buffer), 0);
-
-    if (encode_NestedData(&original_nested, &nested_encoder)) {{
-        printf("NestedData encoded successfully.\\n");
-    }} else {{
-        fprintf(stderr, "Failed to encode NestedData.\\n");
-        free(original_nested.description);
-        return 1;
-    }}
-
-    size_t nested_encoded_len = cbor_encoder_get_buffer_size(&nested_encoder, nested_buffer);
-    printf("Nested Encoded size: %zu bytes\\n", nested_encoded_len);
-
-    struct NestedData decoded_nested;
-    decoded_nested.description = (char*)malloc(256); // Allocate memory for description
-    if (!decoded_nested.description) {{
-        fprintf(stderr, "Failed to allocate memory for decoded description.\\n");
-        free(original_nested.description);
-        return 1;
-    }}
-
-    CborParser nested_parser;
-    CborValue nested_it;
-    err = cbor_parser_init(nested_buffer, nested_encoded_len, 0, &nested_parser, &nested_it);
-    if (err != CborNoError) {{
-        fprintf(stderr, "Failed to initialize nested CBOR parser: %s\\n", cbor_error_string(err));
-        free(original_nested.description);
-        free(decoded_nested.description);
-        return 1;
-    }}
-
-    if (decode_NestedData(&decoded_nested, &nested_it)) {{
-        printf("NestedData decoded successfully.\\n");
-        printf("Decoded Nested ID: %d\\n", decoded_nested.inner_data.id);
-        printf("Decoded Nested Name: %s\\n", decoded_nested.inner_data.name);
-        printf("Decoded Nested Description: %s\\n", decoded_nested.description);
-        printf("Decoded Nested Value: %d\\n", decoded_nested.value);
-
-        // Basic assertions for nested data
-        if (decoded_nested.inner_data.id != original_nested.inner_data.id ||
-            strcmp(decoded_nested.inner_data.name, original_nested.inner_data.name) != 0 ||
-            strcmp(decoded_nested.description, original_nested.description) != 0 ||
-            decoded_nested.value != original_nested.value)
-        {{
-            fprintf(stderr, "Decoded nested data does not match original data!\\n");
-            return 1;
-        }}
-
-    }} else {{
-        fprintf(stderr, "Failed to decode NestedData.\\n");
-        return 1;
-    }}
-
-    free(original_nested.description);
-    free(decoded_nested.description);
-
-    printf("All tests passed successfully.\\n");
-    return 0;
-}}
-    """
-    test_harness_c_file = output_dir / f"test_harness_{HEADER_FILE.stem}.c"
-    test_harness_c_file.write_text(test_harness_c_content)
-    print(f"Generated C test harness: {test_harness_c_file}")
-
-    yield output_dir, build_dir, test_executable_name
-
-    # Teardown: Clean up the temporary directory
-    # shutil.rmtree(tmp_path) # pytest's tmp_path fixture handles cleanup
-
-def test_full_cbor_pipeline(setup_test_environment):
-    output_dir, build_dir, test_executable_name = setup_test_environment
-
-    # 3. Configure CMake
-    print(f"Configuring CMake in {build_dir}...")
+    # 1. Run the code generator script as a subprocess
+    print(f"Running src/cbor_codegen.py for {HEADER_FILE} into {output_dir}")
     try:
         subprocess.run(
-            ["cmake", "-S", str(output_dir), "-B", str(build_dir)],
+            [
+                sys.executable, # Use the current Python interpreter
+                str(SRC_DIR / 'cbor_codegen.py'),
+                str(HEADER_FILE),
+                "--output-dir", str(output_dir),
+                # Pass TinyCBOR include path to pycparser for parsing
+                "--cpp-args=-I" + str(tinycbor_install_path / "include")
+            ],
             check=True,
             capture_output=True,
             text=True
         )
     except subprocess.CalledProcessError as e:
-        print(f"CMake configure failed with error: {e}")
-        print(f"Stdout: {e.stdout}")
-        print(f"Stderr: {e.stderr}")
-        pytest.fail(f"CMake configure failed: {e.stderr}")
+        print(f"Code generation failed:\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}")
+        pytest.fail("Code generation failed")
+
+    assert (output_dir / generated_h_file_name).exists()
+    assert (output_dir / generated_c_file_name).exists()
+    assert (output_dir / generated_cmake_file_name).exists()
+
+    # 2. Render the C test harness file from its template
+    print(f"Rendering C test harness from template...")
+    harness_template = env.get_template('c_test_harness_simple_data.c.jinja')
+    rendered_harness = harness_template.render(
+        input_header_path=os.path.relpath(HEADER_FILE, output_dir) # Path relative to generated CMakeLists.txt
+    )
+    (output_dir / test_harness_c_file_name).write_text(rendered_harness)
+    print(f"Generated C test harness: {output_dir / test_harness_c_file_name}")
+
+    # 3. Re-render CMakeLists.txt to include the test harness executable
+    print(f"Re-rendering CMakeLists.txt to include test harness...")
+    cmake_template = env.get_template('CMakeLists.txt.jinja')
+    rendered_cmake = cmake_template.render(
+        generated_library_name=generated_library_name,
+        generated_c_file_name=generated_c_file_name,
+        test_harness_c_file_name=test_harness_c_file_name,
+        test_harness_executable_name=test_executable_name
+    )
+    (output_dir / generated_cmake_file_name).write_text(rendered_cmake)
+
+    yield output_dir, build_dir, test_executable_name, tinycbor_install_path
+
+def test_full_cbor_pipeline(setup_test_environment, subprocess):
+    output_dir, build_dir, test_executable_name, tinycbor_install_path = setup_test_environment
+
+    # 4. Configure CMake
+    print(f"Configuring CMake in {build_dir}...")
+    cmake_configure_args = [
+        "cmake",
+        str(output_dir),
+        f"-DCMAKE_PREFIX_PATH={tinycbor_install_path}", # Point CMake to TinyCBOR install
+        "-DCMAKE_BUILD_TYPE=Release" # Ensure release build for speed/size
+    ]
+    result = subprocess.run(cmake_configure_args, cwd=build_dir, check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"CMake configure failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
+        pytest.fail("CMake configure failed")
 
     print(f"Building project in {build_dir}...")
-    # 4. Build the project
-    try:
-        subprocess.run(
-            ["cmake", "--build", str(build_dir)],
-            check=True,
-            capture_output=True,
-            text=True
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"CMake build failed with error: {e}")
-        print(f"Stdout: {e.stdout}")
-        print(f"Stderr: {e.stderr}")
-        pytest.fail(f"CMake build failed: {e.stderr}")
+    # 5. Build the project
+    result = subprocess.run(
+        ["cmake", "--build", "."],
+        cwd=build_dir,
+        check=False,
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print(f"CMake build failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
+        pytest.fail("CMake build failed")
 
-    # 5. Run the generated test executable
-    print(f"Running test executable: {build_dir / test_executable_name}")
-    try:
-        result = subprocess.run(
-            [str(build_dir / test_executable_name)],
-            check=True,
-            capture_output=True,
-            text=True
-        )
-        print("Test executable output:")
-        print(result.stdout)
-        if result.stderr:
-            print("Test executable stderr:")
-            print(result.stderr)
-    except subprocess.CalledProcessError as e:
-        print(f"Test executable failed with error: {e}")
-        print(f"Stdout: {e.stdout}")
-        print(f"Stderr: {e.stderr}")
-        pytest.fail(f"Test executable failed: {e.stderr}")
+    # 6. Run the generated test executable
+    test_executable_path = build_dir / test_executable_name
+    if not test_executable_path.exists():
+        # On some systems (e.g., Windows), executables might have .exe extension
+        test_executable_path = build_dir / (test_executable_name + ".exe")
+    
+    if not test_executable_path.exists():
+        pytest.fail(f"Test executable not found at {test_executable_path} after build.")
 
+    print(f"Running test executable: {test_executable_path}")
+    result = subprocess.run(
+        [str(test_executable_path)],
+        check=False,
+        capture_output=True,
+        text=True
+    )
+
+    # Assert that the C test harness exited successfully (return code 0)
+    if result.returncode != 0:
+        print(f"C test harness failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
+        pytest.fail(f"C test harness exited with non-zero status {result.returncode}")
+    
+    print(f"C test harness output:\n{result.stdout}")
     assert "All tests passed successfully." in result.stdout
     print("Full pipeline test completed successfully.")
