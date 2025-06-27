@@ -3,21 +3,31 @@ project(CborGenerated C CXX)
 
 # This CMakeLists.txt is generated into the output directory (e.g., build_path in tests).
 # It defines a library for the generated CBOR code and links against tinycbor.
-# It assumes tinycbor is already available in the CMake project where this is included.
+
+# Find TinyCBOR library and include directories
+find_library(TINYCBOR_LIBRARY tinycbor HINTS ${CMAKE_PREFIX_PATH}/lib NO_DEFAULT_PATH)
+find_path(TINYCBOR_INCLUDE_DIR tinycbor/cbor.h HINTS ${CMAKE_PREFIX_PATH}/include NO_DEFAULT_PATH)
+
+if (NOT TINYCBOR_LIBRARY)
+    message(FATAL_ERROR "TinyCBOR library not found. Looked in: ${CMAKE_PREFIX_PATH}/lib")
+endif()
+if (NOT TINYCBOR_INCLUDE_DIR)
+    message(FATAL_ERROR "TinyCBOR include directory not found. Looked in: ${CMAKE_PREFIX_PATH}/include")
+endif()
+
+message(STATUS "Found TinyCBOR library: ${TINYCBOR_LIBRARY}")
+message(STATUS "Found TinyCBOR include directory: ${TINYCBOR_INCLUDE_DIR}")
 
 # Add the generated C file to a library
 add_library({{ generated_library_name }} STATIC {{ generated_c_file_name }})
 
-# Link against tinycbor.
-# We assume tinycbor is already configured and available as a target.
-# If tinycbor is fetched via FetchContent in a parent CMakeLists.txt,
-# its targets will be available.
-target_link_libraries({{ generated_library_name }} PRIVATE tinycbor)
+# Link against tinycbor using its found path
+target_link_libraries({{ generated_library_name }} PRIVATE ${TINYCBOR_LIBRARY})
 
 # Add include directories for the generated header and tinycbor
 target_include_directories({{ generated_library_name }} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR} # For cbor_generated.h (which is in the same dir as this CMakeLists.txt)
-    $<TARGET_PROPERTY:tinycbor,INTERFACE_INCLUDE_DIRECTORIES> # For tinycbor headers
+    ${TINYCBOR_INCLUDE_DIR} # For tinycbor headers
 )
 
 # Set properties for the generated library
@@ -32,12 +42,13 @@ add_executable({{ test_harness_executable_name }} {{ test_harness_c_file_name }}
 # Link the test harness against the generated CBOR library and tinycbor
 target_link_libraries({{ test_harness_executable_name }} PRIVATE
     {{ generated_library_name }}
-    tinycbor
+    ${TINYCBOR_LIBRARY}
 )
 
 # Add include directories for the test harness
 target_include_directories({{ test_harness_executable_name }} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR} # For cbor_generated.h
-    $<TARGET_PROPERTY:tinycbor,INTERFACE_INCLUDE_DIRECTORIES> # For tinycbor headers
+    ${TINYCBOR_INCLUDE_DIR} # For tinycbor headers
+    ${CMAKE_CURRENT_SOURCE_DIR}/../.. # For the original simple_data.h in tests/integration
 )
 {% endif %}
