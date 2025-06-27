@@ -18,15 +18,13 @@ endif()
 message(STATUS "Found TinyCBOR library: ${TINYCBOR_LIBRARY}")
 message(STATUS "Found TinyCBOR include directory: ${TINYCBOR_INCLUDE_DIR}")
 
-# Find Doctest library
-# Assumes doctest is installed via CMake (e.g., vcpkg, or system install)
-find_package(doctest CONFIG REQUIRED)
+# Include the dependency management file
+# This path is relative to the CMakeLists.txt being generated.
+# The dependency.cmake file is in the project root, so we need to go up two levels.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../dependency.cmake)
 
-if (NOT doctest_FOUND)
-    message(FATAL_ERROR "Doctest not found. Please install it (e.g., via vcpkg or system package manager).")
-endif()
-
-message(STATUS "Found Doctest: ${doctest_VERSION}")
+# Call the function to set up doctest
+setup_doctest_single_header()
 
 # Add the generated C file to a library
 add_library({{ generated_library_name }} STATIC {{ generated_c_file_name }})
@@ -54,7 +52,7 @@ add_executable({{ test_harness_executable_name }} {{ test_harness_c_file_name }}
 target_link_libraries({{ test_harness_executable_name }} PRIVATE
     {{ generated_library_name }}
     ${TINYCBOR_LIBRARY}
-    doctest::doctest # Link against the doctest imported target
+    doctest_single_header # Link against the downloaded single-header doctest
 )
 
 # Add include directories for the test harness
@@ -62,8 +60,5 @@ target_include_directories({{ test_harness_executable_name }} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR} # For cbor_generated.h
     ${TINYCBOR_INCLUDE_DIR} # For tinycbor headers
     ${CMAKE_CURRENT_SOURCE_DIR}/../.. # For the original simple_data.h in tests/integration
-    # doctest::doctest target usually handles its include directories,
-    # but explicitly adding doctest_INCLUDE_DIR can be a fallback if needed.
-    # ${doctest_INCLUDE_DIR}
 )
 {% endif %}
