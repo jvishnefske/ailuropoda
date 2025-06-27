@@ -50,7 +50,7 @@ int main() {
     if (decode_SimpleData(&decoded_data, &it)) {
         printf("SimpleData decoded successfully.\n");
         printf("Decoded ID: %d\n", decoded_data.id);
-        printf("Decoded Name: %s\n", decoded_data.name);
+        printf("Decoded Name: %.*s\n", (int)sizeof(decoded_data.name), decoded_data.name);
         printf("Decoded Is Active: %s\n", decoded_data.is_active ? "true" : "false");
         printf("Decoded Temperature: %f\n", decoded_data.temperature);
         printf("Decoded Flags: [%d, %d, %d, %d]\n", decoded_data.flags[0], decoded_data.flags[1], decoded_data.flags[2], decoded_data.flags[3]);
@@ -125,7 +125,7 @@ int main() {
     if (decode_NestedData(&decoded_nested, &nested_it)) {
         printf("NestedData decoded successfully.\n");
         printf("Decoded Nested ID: %d\n", decoded_nested.inner_data.id);
-        printf("Decoded Nested Name: %s\n", decoded_nested.inner_data.name);
+        printf("Decoded Nested Name: %.*s\n", (int)sizeof(decoded_nested.inner_data.name), decoded_nested.inner_data.name);
         printf("Decoded Nested Description: %s\n", decoded_nested.description);
         printf("Decoded Nested Value: %d\n", decoded_nested.value);
 
