@@ -49,36 +49,40 @@ Manually handling CBOR for complex C data structures is a time sink. `Ailuropoda
 
 ---
 
-## 📦 Installation
+## 📦 Installation & Setup
 
 ```bash
-pip install pycparser
-# Or, if you prefer uvx for isolated environments:
-uvx pip install pycparser
+# First, install uv (if you haven't already):
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Navigate to your project directory
+cd /path/to/Ailuropoda
+
+# Create and synchronize the virtual environment with core dependencies
+uv sync
 ```
 
 ### For Development & Testing
 
 ```bash
-# Install development dependencies (including pytest and pytest-subprocess)
-pip install ".[dev]"
-# Or with uvx:
-uvx pip install ".[dev]"
+# Install development dependencies (including pytest, pytest-subprocess, etc.)
+uv sync --dev
 ```
 
 ## 🚀 Usage
 
 1.  **Run the script**:
     ```bash
-    python src/cbor_codegen.py <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
+    uv run python src/cbor_codegen.py <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
     ```
     Example:
     ```bash
     # Generate CBOR code for my_data.h into the 'generated_cbor' directory
-    python src/cbor_codegen.py tests/my_data.h --output-dir ./generated_cbor
+    uv run python src/cbor_codegen.py tests/my_data.h --output-dir ./generated_cbor
 
     # Using uvx for a clean execution environment:
-    uvx python src/cbor_codegen.py tests/my_data.h --output-dir ./generated_cbor
+    # (Note: uvx is typically used for ad-hoc commands. For project work, `uv run` is preferred.)
+    # uvx python src/cbor_codegen.py tests/my_data.h --output-dir ./generated_cbor
     ```
 
     This will create a directory (e.g., `generated_cbor`) containing `cbor_generated.h`, `cbor_generated.c`, and a `CMakeLists.txt` file.
