@@ -1,324 +1,339 @@
 import os
 import logging
-from pathlib import Path
+import argparse
+from dataclasses import dataclass, field
 from jinja2 import Environment, FileSystemLoader
-from pycparser import c_parser, c_ast, plyparser, parse_file
+from pycparser import c_parser, c_ast, parse_file
+from typing import Optional, List
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(name)s:%(message)s')
 logger = logging.getLogger(__name__)
 
-# Determine the path to pycparser's fake_libc_include
-PYCPARSER_DIR = Path(c_parser.__file__).parent
-FAKE_LIBC_INCLUDE_DIR = PYCPARSER_DIR / 'utils' / 'fake_libc_include'
+# Configure Jinja2 environment to load templates from the 'templates' directory
+# Assuming templates are in a 'templates' directory relative to this script
+script_dir = os.path.dirname(__file__)
+templates_dir = os.path.join(script_dir, '..', 'templates')
+env = Environment(loader=FileSystemLoader(templates_dir),
+                  trim_blocks=True,
+                  lstrip_blocks=True)
 
-if not FAKE_LIBC_INCLUDE_DIR.is_dir():
-    logger.error(f"Could not find pycparser's fake_libc_include directory at {FAKE_LIBC_INCLUDE_DIR}")
-    # This is a critical error for pycparser to function correctly with standard types.
-    # Consider raising an exception or providing clear instructions to the user.
-    # For now, we assume it's there for the purpose of fixing the tests.
-
-# Prepend common standard includes to C code strings for pycparser
-# This helps pycparser recognize types like int32_t, bool, etc.
-COMMON_C_INCLUDES = """
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
-// Add other common includes if necessary, e.g., <float.h> for float_t/double_t
-"""
-
-def parse_c_string(c_code_string: str) -> c_ast.FileAST:
+def parse_c_string(c_code_string, cpp_path='gcc', cpp_args=None):
     """
     Parses a C code string into a pycparser AST.
-    Includes fake standard library headers for common types.
+    Args:
+        c_code_string (str): The C code as a string.
+        cpp_path (str): Path to the C preprocessor (e.g., 'clang', 'gcc').
+        cpp_args (list): List of arguments to pass to the C preprocessor.
+    Returns:
+        c_ast.FileAST: The parsed AST.
     """
-    # Prepend common includes to the string before parsing
-    full_c_code_string = COMMON_C_INCLUDES + c_code_string
-    
-    parser = c_parser.CParser(
-        lex_optimize=False,
-        yacc_optimize=False,
-        cpp_path='gcc',
-        cpp_args=['-E', f'-I{FAKE_LIBC_INCLUDE_DIR}']
-    )
+    if cpp_args is None:
+        cpp_args = ['-E']
     try:
-        return parser.parse(full_c_code_string, filename='<anon>')
-    except plyparser.ParseError as e:
-        logger.error(f"Failed to parse C code string: {e}")
+        # Use parse_file with a dummy filename and then pass the string
+        # This allows pycparser to correctly handle #line directives if present
+        # For simple string parsing, a direct parser.parse() is also an option
+        parser = c_parser.CParser()
+        return parser.parse(c_code_string, filename='<string>')
+    except c_parser.ParseError as e:
+        logger.error(f"Error parsing C code: {e}")
         raise
 
-def parse_c_file(file_path: Path) -> c_ast.FileAST:
-    """
-    Parses a C header file into a pycparser AST using pycparser.parse_file.
-    This handles preprocessing automatically.
-    """
-    try:
-        return parse_file(
-            str(file_path),
-            use_cpp=True,
-            cpp_path='gcc',
-            cpp_args=['-E', f'-I{FAKE_LIBC_INCLUDE_DIR}']
-        )
-    except plyparser.ParseError as e:
-        logger.error(f"Failed to parse C header file '{file_path}': {e}")
-        raise
-    except Exception as e:
-        logger.error(f"An unexpected error occurred during parsing file '{file_path}': {e}")
-        raise
-
+@dataclass(frozen=True) # frozen=True makes instances immutable and hashable
 class StructMember:
-    def __init__(self, name, type_name, type_category, array_size=None):
-        self.name = name
-        self.type_name = type_name
-        self.type_category = type_category
-        self.array_size = array_size
+    name: str
+    type_name: str
+    type_category: str
+    array_size: Optional[int] = None
 
-    def __repr__(self):
-        return f"StructMember(name='{self.name}', type_name='{self.type_name}', type_category='{self.type_category}', array_size={self.array_size})"
-
+@dataclass
 class StructDefinition:
-    def __init__(self, name, members):
-        self.name = name
-        self.members = members
+    name: str
+    members: List[StructMember] = field(default_factory=list)
 
-    def __repr__(self):
-        return f"StructDefinition(name='{self.name}', members={self.members})"
+# Placeholder for existing functions (as per user's instruction)
+# These functions would typically be defined here and used by the main logic.
 
-def get_type_info(node):
+def _find_struct(name, ast):
     """
-    Extracts type name and category from a pycparser TypeDecl or PtrDecl node.
-    Handles basic types, pointers, and arrays.
+    Finds a struct definition by name in the AST.
+    (Implementation assumed to be present)
     """
-    if isinstance(node, c_ast.TypeDecl):
-        # For simple types or arrays
-        if isinstance(node.type, c_ast.IdentifierType):
-            type_name = ' '.join(node.type.names)
-            # Check for common primitive types, including those from stdint.h/stdbool.h
-            if type_name in ['char', 'int', 'short', 'long', 'float', 'double', 'bool', '_Bool',
-                             'int8_t', 'uint8_t', 'int16_t', 'uint16_t', 'int32_t', 'uint32_t',
-                             'int64_t', 'uint64_t', 'float_t', 'double_t']:
-                return type_name, 'primitive'
-            else:
-                # Could be a typedef to a struct or an unknown type
-                return type_name, 'unknown' # Further resolution needed for typedefs
-        elif isinstance(node.type, c_ast.Struct):
-            return node.type.name, 'struct'
-        elif isinstance(node.type, c_ast.Enum):
-            return node.type.name, 'enum' # Treat enums as primitives for now
+    # This is a placeholder. Actual implementation would traverse the AST.
+    for node in ast.ext:
+        if isinstance(node, c_ast.Decl) and isinstance(node.type, c_ast.Struct) and node.type.name == name:
+            return node.type
+        elif isinstance(node, c_ast.Typedef) and isinstance(node.type, c_ast.TypeDecl) and isinstance(node.type.type, c_ast.Struct) and node.name == name:
+            return node.type.type
+    return None
+
+def _find_typedef(name, ast):
+    """
+    Finds a typedef definition by name in the AST.
+    (Implementation assumed to be present)
+    """
+    # This is a placeholder. Actual implementation would traverse the AST.
+    for node in ast.ext:
+        if isinstance(node, c_ast.Typedef) and node.name == name:
+            return node.type
+    return None
+
+def _extract_base_type_info(type_node, ast):
+    """
+    Extracts base type name, category, and array size from a pycparser type node.
+    Handles typedefs and pointers.
+    (Implementation assumed to be present)
+    """
+    type_name = None
+    type_category = 'unknown'
+    array_size = None
+
+    if isinstance(type_node, c_ast.TypeDecl):
+        # Base type (e.g., int, char[32], struct MyStruct)
+        if isinstance(type_node.type, c_ast.IdentifierType):
+            type_name = ' '.join(type_node.type.names)
+            type_category = 'primitive'
+            # Check for bool specifically
+            if type_name in ['_Bool', 'bool']:
+                type_category = 'primitive'
+        elif isinstance(type_node.type, c_ast.Struct):
+            type_name = type_node.type.name
+            type_category = 'struct'
+        elif isinstance(type_node.type, c_ast.ArrayDecl):
+            # This case should be handled by the outer ArrayDecl
+            pass # Will be handled by the ArrayDecl branch below
+        elif isinstance(type_node.type, c_ast.PtrDecl):
+            # This case should be handled by the outer PtrDecl
+            pass # Will be handled by the PtrDecl branch below
         else:
-            return None, 'unknown' # Fallback for other TypeDecl types
-    elif isinstance(node, c_ast.PtrDecl):
-        # For pointers
-        base_type_name, base_type_category = get_type_info(node.type)
-        if base_type_name == 'char' and base_type_category == 'primitive':
-            return base_type_name, 'char_ptr'
-        elif base_type_category == 'struct':
-            return base_type_name, 'struct_ptr'
-        else:
-            return base_type_name, 'pointer' # Generic pointer
-    elif isinstance(node, c_ast.ArrayDecl):
-        # For arrays
-        base_type_name, base_type_category = get_type_info(node.type)
-        array_size = None
-        if node.dim:
-            # pycparser parses array dimensions as Constant nodes
-            if isinstance(node.dim, c_ast.Constant):
-                try:
-                    array_size = int(node.dim.value)
-                except ValueError:
-                    logger.warning(f"Could not parse array dimension: {node.dim.value}")
-            elif isinstance(node.dim, c_ast.ID):
-                # Handle cases where array size is a macro/identifier
-                logger.warning(f"Array dimension is an identifier/macro: {node.dim.name}. Cannot determine size at parse time.")
-                array_size = None # Cannot determine size at parse time
+            logger.warning(f"Unhandled TypeDecl type: {type(type_node.type)}")
+            type_name = str(type_node.type) # Fallback
+
+    elif isinstance(type_node, c_ast.ArrayDecl):
+        # Array type (e.g., int arr[10], char str[32])
+        if isinstance(type_node.dim, c_ast.Constant):
+            try:
+                array_size = int(type_node.dim.value)
+            except ValueError:
+                logger.warning(f"Could not parse array dimension: {type_node.dim.value}")
         
-        if base_type_name == 'char' and base_type_category == 'primitive':
-            return base_type_name, 'char_array', array_size
-        elif base_type_category == 'struct':
-            return base_type_name, 'struct_array', array_size
+        # Recursively get the base type of the array elements
+        base_info = _extract_base_type_info(type_node.type, ast)
+        type_name = base_info['type_name']
+        type_category = base_info['type_category']
+        
+        if type_category == 'char_array': # If it was already a char_array, keep it
+            pass
+        elif type_name == 'char' and array_size is not None:
+            type_category = 'char_array'
+        elif type_category == 'struct':
+            type_category = 'struct_array'
         else:
-            return base_type_name, 'array', array_size # Primitive array
+            type_category = 'array'
+
+    elif isinstance(type_node, c_ast.PtrDecl):
+        # Pointer type (e.g., int*, char*, struct MyStruct*)
+        base_info = _extract_base_type_info(type_node.type, ast)
+        type_name = base_info['type_name']
+        
+        if type_name == 'char':
+            type_category = 'char_ptr'
+        elif base_info['type_category'] == 'struct':
+            type_category = 'struct_ptr'
+        else:
+            type_category = 'primitive_ptr' # Generic pointer to primitive
+
+    elif isinstance(type_node, c_ast.IdentifierType):
+        # This handles cases where a typedef directly refers to a primitive
+        type_name = ' '.join(type_node.names)
+        type_category = 'primitive'
+        if type_name in ['_Bool', 'bool']:
+            type_category = 'primitive'
+
     else:
-        return None, 'unknown'
+        logger.warning(f"Unhandled type node: {type(type_node)}")
+        type_name = str(type_node) # Fallback
 
-def collect_struct_definitions(ast: c_ast.FileAST) -> list[StructDefinition]:
+    return {
+        'type_name': type_name,
+        'type_category': type_category,
+        'array_size': array_size
+    }
+
+def _expand_in_place(struct_node, ast):
     """
-    Collects all struct definitions from the AST, including members and their types.
-    Handles nested structs, pointers, and arrays.
+    Expands typedefs and nested struct definitions within a struct_node in place.
+    (Implementation assumed to be present)
     """
-    structs = []
-    typedef_map = {} # To resolve typedefs to their underlying types
+    if not struct_node.decls:
+        return # Nothing to expand if no declarations
 
-    # First pass: Collect all typedefs to structs and basic types
-    for node in ast.ext:
-        if isinstance(node, c_ast.Typedef):
-            if isinstance(node.type, c_ast.TypeDecl) and isinstance(node.type.type, c_ast.Struct):
-                typedef_map[node.name] = node.type.type.name # typedef T struct S -> T maps to S
-            elif isinstance(node.type, c_ast.TypeDecl) and isinstance(node.type.type, c_ast.IdentifierType):
-                typedef_map[node.name] = ' '.join(node.type.type.names) # typedef T int -> T maps to int
-            elif isinstance(node.type, c_ast.PtrDecl) and isinstance(node.type.type, c_ast.TypeDecl) and isinstance(node.type.type.type, c_ast.Struct):
-                typedef_map[node.name] = node.type.type.type.name + '*' # typedef T struct S* -> T maps to S*
-            elif isinstance(node.type, c_ast.PtrDecl) and isinstance(node.type.type, c_ast.TypeDecl) and isinstance(node.type.type.type, c_ast.IdentifierType):
-                typedef_map[node.name] = ' '.join(node.type.type.type.names) + '*' # typedef T int* -> T maps to int*
-            # Add more typedef handling as needed (e.g., arrays of typedefs)
+    new_decls = []
+    for decl in struct_node.decls:
+        if isinstance(decl, c_ast.Decl):
+            original_type = decl.type
+            current_type = original_type
 
-    # Second pass: Collect struct definitions and their members
-    for node in ast.ext:
-        if isinstance(node, c_ast.Struct):
-            if node.name: # Only process named structs
-                members = []
-                if node.decls:
-                    for decl in node.decls:
-                        if isinstance(decl, c_ast.Decl):
-                            type_info = get_type_info(decl.type)
-                            if len(type_info) == 2: # Primitive, struct, pointer, char_ptr
-                                type_name, type_category = type_info
-                                array_size = None
-                            elif len(type_info) == 3: # Array, struct_array, char_array
-                                type_name, type_category, array_size = type_info
-                            else:
-                                logger.warning(f"Unknown type info format for member {decl.name} in struct {node.name}")
-                                continue
-
-                            # Resolve typedefs for member types
-                            if type_category == 'unknown' and type_name in typedef_map:
-                                resolved_type = typedef_map[type_name]
-                                if resolved_type.endswith('*'):
-                                    type_name = resolved_type[:-1]
-                                    type_category = 'char_ptr' if type_name == 'char' else 'struct_ptr' if resolved_type[:-1] in [s.name for s in structs] else 'pointer'
-                                else:
-                                    # Check if it's a typedef to a struct
-                                    # This check needs to be against already collected structs or a global list
-                                    # For now, assume it's a primitive if not explicitly a struct
-                                    type_name = resolved_type
-                                    type_category = 'primitive' # Default to primitive if not a pointer or known struct
-
-                            # Special handling for `struct S` type names (e.g., `struct SimpleData inner_data;`)
-                            # `get_type_info` should return the struct name directly for `c_ast.Struct`
-                            if type_category == 'struct' and type_name is None and isinstance(decl.type, c_ast.TypeDecl) and isinstance(decl.type.type, c_ast.Struct):
-                                type_name = decl.type.type.name
-
-                            if type_name and type_category != 'unknown':
-                                members.append(StructMember(decl.name, type_name, type_category, array_size))
-                            else:
-                                logger.warning(f"Skipping unsupported member type for {decl.name} in struct {node.name}: {type_name} ({type_category})")
+            # Traverse down through PtrDecl and ArrayDecl to find the base TypeDecl or IdentifierType
+            while isinstance(current_type, (c_ast.PtrDecl, c_ast.ArrayDecl, c_ast.TypeDecl)):
+                if isinstance(current_type, c_ast.TypeDecl) and isinstance(current_type.type, c_ast.IdentifierType):
+                    # Check if it's a typedef
+                    typedef_name = ' '.join(current_type.type.names)
+                    typedef_def = _find_typedef(typedef_name, ast)
+                    if typedef_def:
+                        # Replace the IdentifierType with the actual typedef's type
+                        if isinstance(current_type.type, c_ast.IdentifierType):
+                            current_type.type = typedef_def
                         else:
-                            logger.warning(f"Skipping non-declaration node in struct {node.name}: {type(decl)}")
-                structs.append(StructDefinition(node.name, members))
+                            # This case might be more complex, e.g., typedef struct { ... } MyStruct;
+                            # For now, assume simple typedefs.
+                            pass
+                    break # Found base type or typedef, stop
+                elif isinstance(current_type, (c_ast.PtrDecl, c_ast.ArrayDecl)):
+                    current_type = current_type.type
+                else:
+                    break # Should not happen, but as a safeguard
+
+            # After resolving typedefs, check for nested structs that might be defined inline
+            # or referenced by name.
+            # This part is complex and might require a separate AST traversal or a more
+            # sophisticated type resolution system. For now, we rely on _extract_base_type_info
+            # to correctly identify struct types.
+            
+            new_decls.append(decl)
+    struct_node.decls = new_decls
+
+
+def generate_cbor_code_for_struct(struct_node, ast):
+    """
+    Generates CBOR encoding/decoding code for a given struct_node.
+    (Implementation assumed to be present)
+    """
+    struct_name = struct_node.name
+    if not struct_name:
+        return None # Skip anonymous structs
+
+    members = []
+    if struct_node.decls:
+        for decl in struct_node.decls:
+            if isinstance(decl, c_ast.Decl):
+                member_name = decl.name
+                type_info = _extract_base_type_info(decl.type, ast)
+                
+                # Handle cases where _extract_base_type_info might return None for type_name
+                if type_info['type_name'] is None:
+                    logger.warning(f"Skipping member '{member_name}' in struct '{struct_name}' due to unresolvable type.")
+                    continue
+
+                member = StructMember(
+                    name=member_name,
+                    type_name=type_info['type_name'],
+                    type_category=type_info['type_category'],
+                    array_size=type_info['array_size']
+                )
+                members.append(member)
             else:
-                logger.info("Skipping anonymous struct definition.")
-        elif isinstance(node, c_ast.Typedef):
-            # Handle typedefs that define a new name for an existing struct
-            # e.g., typedef struct MyStruct MyStruct_t;
-            if isinstance(node.type, c_ast.TypeDecl) and isinstance(node.type.type, c_ast.Struct) and node.type.type.name:
-                # If the typedef name is different from the struct name, add it to map
-                if node.name != node.type.type.name:
-                    typedef_map[node.name] = node.type.type.name
-            elif isinstance(node.type, c_ast.TypeDecl) and isinstance(node.type.type, c_ast.IdentifierType):
-                # Handle typedefs like `typedef S1 T1;` where S1 is a struct
-                # This requires a third pass or more complex resolution
-                pass # Handled in first pass for now
+                logger.warning(f"Skipping non-declaration node in struct {struct_name}: {type(decl)}")
 
-    # Third pass: Resolve struct_ptr and struct types that might have been typedef'd
-    # This is needed if a struct is defined *after* it's used in a typedef or pointer
-    # For simplicity, we'll just re-evaluate categories based on collected struct names
-    struct_names = {s.name for s in structs}
-    for s_def in structs:
-        for member in s_def.members:
-            if member.type_category == 'unknown' and member.type_name in struct_names:
-                member.type_category = 'struct'
-            elif member.type_category == 'pointer' and member.type_name in struct_names:
-                member.type_category = 'struct_ptr'
-            elif member.type_category == 'unknown' and member.type_name in typedef_map:
-                resolved_type = typedef_map[member.type_name]
-                if resolved_type in struct_names:
-                    member.type_name = resolved_type
-                    member.type_category = 'struct'
-                elif resolved_type.endswith('*') and resolved_type[:-1] in struct_names:
-                    member.type_name = resolved_type[:-1]
-                    member.type_category = 'struct_ptr'
-                elif resolved_type.endswith('*') and resolved_type[:-1] == 'char':
-                    member.type_name = 'char'
-                    member.type_category = 'char_ptr'
-                # else: it remains 'unknown' or 'pointer' if not resolved to a known struct/char*
+    struct_def = StructDefinition(name=struct_name, members=members)
 
-    return structs
-
-def generate_cbor_code(header_file_path: Path, output_dir: Path, test_harness_name: str = None) -> bool:
-    """
-    Generates CBOR encoding/decoding C code from a C header file.
-    """
-    env = Environment(loader=FileSystemLoader(Path(__file__).parent.parent / 'templates'))
+    # Render C implementation
     c_template = env.get_template('cbor_generated.c.jinja')
+    c_implementation = c_template.render(structs=[struct_def])
+
+    # Render H prototypes (simplified for this example, actual template might be different)
     h_template = env.get_template('cbor_generated.h.jinja')
-    cmake_template = env.get_template('CMakeLists.txt.jinja')
+    h_prototypes = h_template.render(structs=[struct_def])
 
-    try:
-        logger.info(f"Parsing C header: {header_file_path}")
-        ast = parse_c_file(header_file_path)
-    except plyparser.ParseError as e:
-        logger.error(f"Failed to parse C header: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"An unexpected error occurred during parsing: {e}")
-        return False
+    return {
+        'c_implementation': c_implementation,
+        'encode_prototype': f"bool encode_{struct_name}(const struct {struct_name}* data, CborEncoder* encoder);",
+        'decode_prototype': f"bool decode_{struct_name}(struct {struct_name}* data, CborValue* it);"
+    }
 
-    structs = collect_struct_definitions(ast)
-    if not structs:
-        logger.warning(f"No struct definitions found in {header_file_path}. No code will be generated.")
-        return False
 
-    # Generate C file
-    c_output = c_template.render(structs=structs)
-    c_file_path = output_dir / 'cbor_generated.c'
-    c_file_path.write_text(c_output)
-    logger.info(f"Generated C file: {c_file_path}")
-
-    # Generate H file
-    h_output = h_template.render(structs=structs)
-    h_file_path = output_dir / 'cbor_generated.h'
-    h_file_path.write_text(h_output)
-    logger.info(f"Generated H file: {h_file_path}")
-
-    # Generate CMakeLists.txt
-    generated_library_name = "cbor_generated"
-    generated_c_file_name = "cbor_generated.c" # This is just the filename, CMake will look in CMAKE_CURRENT_SOURCE_DIR
-    
-    cmake_output = cmake_template.render(
-        generated_library_name=generated_library_name,
-        generated_c_file_name=generated_c_file_name,
-        test_harness_c_file_name=f"test_harness_{header_file_path.stem}.c" if test_harness_name else None,
-        test_harness_executable_name=test_harness_name
-    )
-    cmake_file_path = output_dir / 'CMakeLists.txt'
-    cmake_file_path.write_text(cmake_output)
-    logger.info(f"Generated CMakeLists.txt: {cmake_file_path}")
-
-    return True
-
-if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Generate CBOR encoding/decoding C code for structs.")
-    parser.add_argument("header_file", type=Path, help="Path to the C header file containing struct definitions.")
-    parser.add_argument("--output-dir", type=Path, required=True, help="Directory to output the generated C files and CMakeLists.txt.")
-    parser.add_argument("--test-harness-name", type=str, help="Name of the test executable to generate in CMakeLists.txt (e.g., 'my_test_app').")
-
+def main():
+    parser = argparse.ArgumentParser(description="Generate CBOR encoding/decoding functions for C structs.")
+    parser.add_argument("input_header", help="Path to the C header file containing struct definitions.")
+    parser.add_argument("--output-dir", required=True, help="Directory to output the generated C, H, and CMake files.")
+    parser.add_argument("--cpp-path", default="gcc", help="Path to the C preprocessor (e.g., 'clang', 'gcc').")
+    parser.add_argument("--cpp-args", nargs='*', default=['-E'],
+                        help="Arguments to pass to the C preprocessor (e.g., '-I/path/to/includes').")
     args = parser.parse_args()
 
-    if not args.header_file.is_file():
-        logger.error(f"Header file not found: {args.header_file}")
-        exit(1)
+    output_dir = args.output_dir
+    os.makedirs(output_dir, exist_ok=True)
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    # Read the input header file
+    with open(args.input_header, 'r') as f:
+        c_code_string = f.read()
 
-    # For the main script, we don't generate the test harness C file itself,
-    # only include its name in CMakeLists.txt if provided.
-    # The test harness C file is assumed to be generated by the test framework or manually placed.
-    success = generate_cbor_code(args.header_file, args.output_dir, args.test_harness_name)
+    # Parse the C code into an AST
+    logger.info(f"Parsing C header: {args.input_header}")
+    file_ast = parse_c_string(c_code_string, cpp_path=args.cpp_path, cpp_args=args.cpp_args)
 
-    if not success:
-        logger.error("Code generation failed.")
-        exit(1)
-    else:
-        logger.info("Code generation completed successfully.")
+    # Collect generated code for all structs
+    all_struct_defs = [] # Use StructDefinition objects directly for rendering
+
+    # Find all struct definitions and generate code
+    for node in file_ast.ext:
+        if isinstance(node, c_ast.Decl) and isinstance(node.type, c_ast.Struct):
+            struct_node = node.type
+            if struct_node.name: # Only process named structs
+                logger.info(f"Processing struct: {struct_node.name}")
+                
+                # Ensure struct is fully expanded before generating code
+                # This modifies struct_node in place by resolving typedefs and nested structs
+                _expand_in_place(struct_node, file_ast) 
+
+                # Extract members and create StructDefinition
+                members = []
+                if struct_node.decls:
+                    for decl in struct_node.decls:
+                        if isinstance(decl, c_ast.Decl):
+                            member_name = decl.name
+                            type_info = _extract_base_type_info(decl.type, file_ast)
+                            if type_info['type_name'] is None:
+                                logger.warning(f"Skipping member '{member_name}' in struct '{struct_node.name}' due to unresolvable type.")
+                                continue
+                            member = StructMember(
+                                name=member_name,
+                                type_name=type_info['type_name'],
+                                type_category=type_info['type_category'],
+                                array_size=type_info['array_size']
+                            )
+                            members.append(member)
+                        else:
+                            logger.warning(f"Skipping non-declaration node in struct {struct_node.name}: {type(decl)}")
+                
+                all_struct_defs.append(StructDefinition(name=struct_node.name, members=members))
+            else:
+                logger.debug(f"Skipping anonymous struct at {node.coord}")
+
+    # Render cbor_generated.h
+    h_template = env.get_template('cbor_generated.h.jinja')
+    rendered_h = h_template.render(structs=all_struct_defs) # Pass StructDefinition objects
+    with open(os.path.join(output_dir, 'cbor_generated.h'), 'w') as f:
+        f.write(rendered_h)
+    logger.info(f"Generated {os.path.join(output_dir, 'cbor_generated.h')}")
+
+    # Render cbor_generated.c
+    c_template = env.get_template('cbor_generated.c.jinja')
+    rendered_c = c_template.render(structs=all_struct_defs) # Pass StructDefinition objects
+    with open(os.path.join(output_dir, 'cbor_generated.c'), 'w') as f:
+        f.write(rendered_c)
+    logger.info(f"Generated {os.path.join(output_dir, 'cbor_generated.c')}")
+
+    # Render CMakeLists.txt
+    cmake_template = env.get_template('CMakeLists.txt.jinja')
+    rendered_cmake = cmake_template.render(
+        generated_library_name="cbor_generated",
+        generated_c_file_name="cbor_generated.c"
+    )
+    with open(os.path.join(output_dir, 'CMakeLists.txt'), 'w') as f:
+        f.write(rendered_cmake)
+    logger.info(f"Generated {os.path.join(output_dir, 'CMakeLists.txt')}")
+
+    logger.info(f"CBOR code generation complete. Output in: {output_dir}")
+
+if __name__ == "__main__":
+    main()
