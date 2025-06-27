@@ -68,7 +68,7 @@ def setup_test_environment(tmp_path, tinycbor_install_path):
     generated_c_file_name = "cbor_generated.c"
     generated_h_file_name = "cbor_generated.h"
     generated_cmake_file_name = "CMakeLists.txt"
-    test_harness_c_file_name = "test_harness.c"
+    test_harness_cpp_file_name = "test_harness.cpp" # Changed from .c to .cpp
     test_executable_name = f"cbor_test_{HEADER_FILE.stem}"
     generated_library_name = "cbor_generated"
 
@@ -96,15 +96,15 @@ def setup_test_environment(tmp_path, tinycbor_install_path):
     assert (output_dir / generated_c_file_name).exists()
     assert (output_dir / generated_cmake_file_name).exists()
 
-    # 2. Render the C test harness file from its template
-    print(f"Rendering C test harness from template...")
-    harness_template = env.get_template('c_test_harness_simple_data.c.jinja')
+    # 2. Render the C++ test harness file from its template
+    print(f"Rendering C++ test harness from template...") # Updated print statement
+    harness_template = env.get_template('c_test_harness_simple_data.cpp.jinja') # Changed template name
     # Use Path.relative_to with walk_up=True to handle paths outside the output_dir
     rendered_harness = harness_template.render(
         input_header_path=HEADER_FILE.relative_to(output_dir, walk_up=True)
     )
-    (output_dir / test_harness_c_file_name).write_text(rendered_harness)
-    print(f"Generated C test harness: {output_dir / test_harness_c_file_name}")
+    (output_dir / test_harness_cpp_file_name).write_text(rendered_harness) # Changed file name
+    print(f"Generated C++ test harness: {output_dir / test_harness_cpp_file_name}") # Updated print statement
 
     # 3. Re-render CMakeLists.txt to include the test harness executable
     print(f"Re-rendering CMakeLists.txt to include test harness...")
@@ -112,7 +112,7 @@ def setup_test_environment(tmp_path, tinycbor_install_path):
     rendered_cmake = cmake_template.render(
         generated_library_name=generated_library_name,
         generated_c_file_name=generated_c_file_name,
-        test_harness_c_file_name=test_harness_c_file_name,
+        test_harness_c_file_name=test_harness_cpp_file_name, # Pass the .cpp file name
         test_harness_executable_name=test_executable_name
     )
     (output_dir / generated_cmake_file_name).write_text(rendered_cmake)
@@ -165,11 +165,13 @@ def test_full_cbor_pipeline(setup_test_environment): # Removed 'subprocess' from
         text=True
     )
 
-    # Assert that the C test harness exited successfully (return code 0)
+    # Assert that the C++ test harness exited successfully (return code 0)
     if result.returncode != 0:
-        print(f"C test harness failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
-        pytest.fail(f"C test harness exited with non-zero status {result.returncode}")
+        print(f"C++ test harness failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}") # Updated print statement
+        pytest.fail(f"C++ test harness exited with non-zero status {result.returncode}")
     
-    print(f"C test harness output:\n{result.stdout}")
-    assert "All tests passed successfully." in result.stdout
+    print(f"C++ test harness output:\n{result.stdout}") # Updated print statement
+    # Doctest output format: [doctest] test cases: X | Y passed | Z failed
+    assert "[doctest] test cases:" in result.stdout
+    assert "| 0 failed" in result.stdout # Ensure no tests failed
     print("Full pipeline test completed successfully.")

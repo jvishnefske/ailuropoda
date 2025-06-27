@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(CborGenerated C CXX)
+project(CborGenerated C CXX) # Ensure CXX is enabled
 
 # This CMakeLists.txt is generated into the output directory (e.g., build_path in tests).
 # It defines a library for the generated CBOR code and links against tinycbor.
@@ -17,6 +17,16 @@ endif()
 
 message(STATUS "Found TinyCBOR library: ${TINYCBOR_LIBRARY}")
 message(STATUS "Found TinyCBOR include directory: ${TINYCBOR_INCLUDE_DIR}")
+
+# Find Doctest library
+# Assumes doctest is installed via CMake (e.g., vcpkg, or system install)
+find_package(doctest CONFIG REQUIRED)
+
+if (NOT doctest_FOUND)
+    message(FATAL_ERROR "Doctest not found. Please install it (e.g., via vcpkg or system package manager).")
+endif()
+
+message(STATUS "Found Doctest: ${doctest_VERSION}")
 
 # Add the generated C file to a library
 add_library({{ generated_library_name }} STATIC {{ generated_c_file_name }})
@@ -37,12 +47,14 @@ set_target_properties({{ generated_library_name }} PROPERTIES
 
 {% if test_harness_c_file_name and test_harness_executable_name %}
 # Add the test harness executable if specified
+# Use the passed test_harness_c_file_name (which will now be .cpp)
 add_executable({{ test_harness_executable_name }} {{ test_harness_c_file_name }})
 
 # Link the test harness against the generated CBOR library and tinycbor
 target_link_libraries({{ test_harness_executable_name }} PRIVATE
     {{ generated_library_name }}
     ${TINYCBOR_LIBRARY}
+    doctest::doctest # Link against the doctest imported target
 )
 
 # Add include directories for the test harness
@@ -50,5 +62,8 @@ target_include_directories({{ test_harness_executable_name }} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR} # For cbor_generated.h
     ${TINYCBOR_INCLUDE_DIR} # For tinycbor headers
     ${CMAKE_CURRENT_SOURCE_DIR}/../.. # For the original simple_data.h in tests/integration
+    # doctest::doctest target usually handles its include directories,
+    # but explicitly adding doctest_INCLUDE_DIR can be a fallback if needed.
+    # ${doctest_INCLUDE_DIR}
 )
 {% endif %}

@@ -1,0 +1,137 @@
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest/doctest.h"
+
+#include "cbor_generated.h"
+#include "{{ input_header_path }}" // This will be simple_data.h
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h> // For malloc/free for char* members
+#include <math.h>   // For fabsf for float comparison
+
+// Test case for SimpleData
+TEST_CASE("SimpleData encoding and decoding") {
+    // Original data
+    struct SimpleData original_data = {
+        .id = 12345,
+        .is_active = true,
+        .temperature = 25.5f,
+        .flags = {1, 2, 3, 4}
+    };
+    strncpy(original_data.name, "Test Name", sizeof(original_data.name) - 1);
+    original_data.name[sizeof(original_data.name) - 1] = '\0';
+
+    printf("Original ID: %d\n", original_data.id);
+    printf("Original Name: |%s|\n", original_data.name);
+    printf("Original Is Active: %s\n", original_data.is_active ? "true" : "false");
+    printf("Original Temperature: %f\n", original_data.temperature);
+    printf("Original Flags: [%d, %d, %d, %d]\n", original_data.flags[0], original_data.flags[1], original_data.flags[2], original_data.flags[3]);
+
+    // Encode
+    uint8_t buffer[256]; // Sufficiently large buffer
+    CborEncoder encoder;
+    cbor_encoder_init(&encoder, buffer, sizeof(buffer), 0);
+
+    bool encode_ok = encode_SimpleData(&original_data, &encoder);
+    REQUIRE(encode_ok); // Use REQUIRE to stop if encoding fails
+
+    size_t encoded_len = cbor_encoder_get_buffer_size(&encoder, buffer);
+    printf("SimpleData encoded successfully. Encoded size: %zu bytes\n", encoded_len);
+
+    // Decode
+    struct SimpleData decoded_data;
+    memset(&decoded_data, 0, sizeof(decoded_data)); // Initialize to zero
+
+    CborParser parser;
+    CborValue it;
+    CborError err = cbor_parser_init(buffer, encoded_len, 0, &parser, &it);
+    REQUIRE(err == CborNoError); // Use REQUIRE to stop if parser init fails
+
+    bool decode_ok = decode_SimpleData(&decoded_data, &it);
+    REQUIRE(decode_ok); // Use REQUIRE to stop if decoding fails
+
+    printf("SimpleData decoded successfully.\n");
+    printf("Decoded ID: %d\n", decoded_data.id);
+    printf("Decoded Name: |%s|\n", decoded_data.name);
+    printf("Decoded Is Active: %s\n", decoded_data.is_active ? "true" : "false");
+    printf("Decoded Temperature: %f\n", decoded_data.temperature);
+    printf("Decoded Flags: [%d, %d, %d, %d]\n", decoded_data.flags[0], decoded_data.flags[1], decoded_data.flags[2], decoded_data.flags[3]);
+
+    // Assertions
+    CHECK(decoded_data.id == original_data.id);
+    CHECK(strcmp(decoded_data.name, original_data.name) == 0);
+    CHECK(decoded_data.is_active == original_data.is_active);
+    // Use doctest::Approx for float comparison
+    CHECK(decoded_data.temperature == doctest::Approx(original_data.temperature));
+    for (int i = 0; i < 4; ++i) {
+        CHECK(decoded_data.flags[i] == original_data.flags[i]);
+    }
+}
+
+// Test case for NestedData (requires manual char* allocation for description)
+TEST_CASE("NestedData encoding and decoding") {
+    // Original data
+    struct NestedData original_nested_data = {
+        .inner_data = {
+            .id = 54321,
+            .is_active = false,
+            .temperature = 99.9f,
+            .flags = {5, 6, 7, 8}
+        },
+        .value = 789
+    };
+    strncpy(original_nested_data.inner_data.name, "Nested Name", sizeof(original_nested_data.inner_data.name) - 1);
+    original_nested_data.inner_data.name[sizeof(original_nested_data.inner_data.name) - 1] = '\0';
+
+    const char* original_description_str = "This is a test description for NestedData.";
+    original_nested_data.description = (char*)original_description_str; // Point to a const string for encoding
+
+    printf("\nOriginal NestedData Value: %d\n", original_nested_data.value);
+    printf("Original NestedData Description: |%s|\n", original_nested_data.description);
+
+    // Encode
+    uint8_t buffer[512]; // Larger buffer for nested struct
+    CborEncoder encoder;
+    cbor_encoder_init(&encoder, buffer, sizeof(buffer), 0);
+
+    bool encode_ok = encode_NestedData(&original_nested_data, &encoder);
+    REQUIRE(encode_ok);
+
+    size_t encoded_len = cbor_encoder_get_buffer_size(&encoder, buffer);
+    printf("Encoded NestedData size: %zu bytes\n", encoded_len);
+
+    // Decode
+    struct NestedData decoded_nested_data;
+    memset(&decoded_nested_data, 0, sizeof(decoded_nested_data));
+
+    // IMPORTANT: For char* members, you must allocate memory before decoding!
+    // The decode_char_ptr helper assumes the pointer is already pointing to a valid buffer.
+    // The hardcoded '256' in the template is a placeholder for max_len.
+    decoded_nested_data.description = (char*)malloc(256); // Allocate enough space
+    REQUIRE(decoded_nested_data.description != NULL);
+
+    CborParser parser;
+    CborValue it;
+    err = cbor_parser_init(buffer, encoded_len, 0, &parser, &it);
+    REQUIRE(err == CborNoError);
+
+    bool decode_ok = decode_NestedData(&decoded_nested_data, &it);
+    REQUIRE(decode_ok);
+
+    printf("Decoded NestedData Value: %d\n", decoded_nested_data.value);
+    printf("Decoded NestedData Description: |%s|\n", decoded_nested_data.description);
+
+    // Assertions for NestedData
+    CHECK(decoded_nested_data.value == original_nested_data.value);
+    CHECK(strcmp(decoded_nested_data.description, original_nested_data.description) == 0);
+
+    // Assertions for nested SimpleData
+    CHECK(decoded_nested_data.inner_data.id == original_nested_data.inner_data.id);
+    CHECK(strcmp(decoded_nested_data.inner_data.name, original_nested_data.inner_data.name) == 0);
+    CHECK(decoded_nested_data.inner_data.is_active == original_nested_data.inner_data.is_active);
+    CHECK(decoded_nested_data.inner_data.temperature == doctest::Approx(original_nested_data.inner_data.temperature));
+    for (int i = 0; i < 4; ++i) {
+        CHECK(decoded_nested_data.inner_data.flags[i] == original_nested_data.inner_data.flags[i]);
+    }
+
+    free(decoded_nested_data.description); // Free allocated memory
+}
