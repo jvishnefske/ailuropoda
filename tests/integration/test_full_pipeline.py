@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import shutil
 import sys
+import os # Import os for environment variables
 from jinja2 import Environment, FileSystemLoader
 
 # Define paths relative to the current test file
@@ -105,13 +106,18 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
     test_executable_name = f"cbor_test_{HEADER_FILE.stem}"
     generated_library_name = "cbor_generated"
 
+    # Set up environment for the subprocess to find the 'ailuropoda' package
+    env_for_subprocess = os.environ.copy()
+    # Add SRC_DIR to PYTHONPATH so 'ailuropoda' can be imported as a module
+    env_for_subprocess['PYTHONPATH'] = str(SRC_DIR) + os.pathsep + env_for_subprocess.get('PYTHONPATH', '')
+
     # 1. Run the code generator script as a subprocess
     print(f"Running src/ailuropoda/cbor_codegen.py for {HEADER_FILE} into {output_dir}")
     try:
         subprocess.run(
             [
                 sys.executable, # Use the current Python interpreter
-                str(SRC_DIR / 'ailuropoda'), # Run as a module
+                "-m", "ailuropoda", # Run 'ailuropoda' as a module
                 str(HEADER_FILE),
                 "--output-dir", str(output_dir),
                 "--cpp-path", cpp_path, # Pass cpp_path from fixture
@@ -121,7 +127,8 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
             ],
             check=True,
             capture_output=True,
-            text=True
+            text=True,
+            env=env_for_subprocess # Pass the modified environment
         )
     except subprocess.CalledProcessError as e:
         print(f"Code generation failed:\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}")
