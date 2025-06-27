@@ -10,6 +10,7 @@ int main() {
     printf("Test harness for {{ input_header_path }} running.\n");
 
     // Example usage of generated functions (simplified)
+    // Test SimpleData
     struct SimpleData test_data = {
         .id = 123,
         .name = "TestName",
@@ -34,10 +35,9 @@ int main() {
 
     // Decode back
     struct SimpleData decoded_data;
-    // For char* members, ensure they are allocated before decoding
-    // For SimpleData, 'name' is a char array, so no malloc needed.
-    // For NestedData, 'description' is char*, so it would need allocation.
-    // This test only uses SimpleData, so it's fine.
+    // Initialize decoded_data to zeros to ensure char arrays are null-terminated
+    // if the decoded string is shorter than the buffer.
+    memset(&decoded_data, 0, sizeof(struct SimpleData));
 
     CborParser parser;
     CborValue it;
@@ -50,7 +50,7 @@ int main() {
     if (decode_SimpleData(&decoded_data, &it)) {
         printf("SimpleData decoded successfully.\n");
         printf("Decoded ID: %d\n", decoded_data.id);
-        printf("Decoded Name: %.*s\n", (int)sizeof(decoded_data.name), decoded_data.name);
+        printf("Decoded Name: %s\n", decoded_data.name); // Use %s after memset
         printf("Decoded Is Active: %s\n", decoded_data.is_active ? "true" : "false");
         printf("Decoded Temperature: %f\n", decoded_data.temperature);
         printf("Decoded Flags: [%d, %d, %d, %d]\n", decoded_data.flags[0], decoded_data.flags[1], decoded_data.flags[2], decoded_data.flags[3]);
@@ -105,6 +105,8 @@ int main() {
     printf("Nested Encoded size: %zu bytes\n", nested_encoded_len);
 
     struct NestedData decoded_nested;
+    // Initialize decoded_nested to zeros before allocating description
+    memset(&decoded_nested, 0, sizeof(struct NestedData));
     decoded_nested.description = (char*)malloc(256); // Allocate memory for description
     if (!decoded_nested.description) {
         fprintf(stderr, "Failed to allocate memory for decoded description.\n");
@@ -125,7 +127,7 @@ int main() {
     if (decode_NestedData(&decoded_nested, &nested_it)) {
         printf("NestedData decoded successfully.\n");
         printf("Decoded Nested ID: %d\n", decoded_nested.inner_data.id);
-        printf("Decoded Nested Name: %.*s\n", (int)sizeof(decoded_nested.inner_data.name), decoded_nested.inner_data.name);
+        printf("Decoded Nested Name: %s\n", decoded_nested.inner_data.name); // Use %s after memset
         printf("Decoded Nested Description: %s\n", decoded_nested.description);
         printf("Decoded Nested Value: %d\n", decoded_nested.value);
 
