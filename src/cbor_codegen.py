@@ -50,15 +50,11 @@ class StructDefinition:
     name: str
     members: List[StructMember] = field(default_factory=list)
 
-# Placeholder for existing functions (as per user's instruction)
-# These functions would typically be defined here and used by the main logic.
-
-def _find_struct(name, ast):
+# These functions are made public for testing and potential external use
+def find_struct(name, ast):
     """
     Finds a struct definition by name in the AST.
-    (Implementation assumed to be present)
     """
-    # This is a placeholder. Actual implementation would traverse the AST.
     for node in ast.ext:
         if isinstance(node, c_ast.Decl) and isinstance(node.type, c_ast.Struct) and node.type.name == name:
             return node.type
@@ -66,22 +62,19 @@ def _find_struct(name, ast):
             return node.type.type
     return None
 
-def _find_typedef(name, ast):
+def find_typedef(name, ast):
     """
     Finds a typedef definition by name in the AST.
-    (Implementation assumed to be present)
     """
-    # This is a placeholder. Actual implementation would traverse the AST.
     for node in ast.ext:
         if isinstance(node, c_ast.Typedef) and node.name == name:
             return node.type
     return None
 
-def _extract_base_type_info(type_node, ast):
+def extract_base_type_info(type_node, ast):
     """
     Extracts base type name, category, and array size from a pycparser type node.
     Handles typedefs and pointers.
-    (Implementation assumed to be present)
     """
     type_name = None
     type_category = 'unknown'
@@ -117,7 +110,7 @@ def _extract_base_type_info(type_node, ast):
                 logger.warning(f"Could not parse array dimension: {type_node.dim.value}")
         
         # Recursively get the base type of the array elements
-        base_info = _extract_base_type_info(type_node.type, ast)
+        base_info = extract_base_type_info(type_node.type, ast) # Use public function
         type_name = base_info['type_name']
         type_category = base_info['type_category']
         
@@ -132,7 +125,7 @@ def _extract_base_type_info(type_node, ast):
 
     elif isinstance(type_node, c_ast.PtrDecl):
         # Pointer type (e.g., int*, char*, struct MyStruct*)
-        base_info = _extract_base_type_info(type_node.type, ast)
+        base_info = extract_base_type_info(type_node.type, ast) # Use public function
         type_name = base_info['type_name']
         
         if type_name == 'char':
@@ -159,10 +152,9 @@ def _extract_base_type_info(type_node, ast):
         'array_size': array_size
     }
 
-def _expand_in_place(struct_node, ast):
+def expand_in_place(struct_node, ast):
     """
     Expands typedefs and nested struct definitions within a struct_node in place.
-    (Implementation assumed to be present)
     """
     if not struct_node.decls:
         return # Nothing to expand if no declarations
@@ -178,7 +170,7 @@ def _expand_in_place(struct_node, ast):
                 if isinstance(current_type, c_ast.TypeDecl) and isinstance(current_type.type, c_ast.IdentifierType):
                     # Check if it's a typedef
                     typedef_name = ' '.join(current_type.type.names)
-                    typedef_def = _find_typedef(typedef_name, ast)
+                    typedef_def = find_typedef(typedef_name, ast) # Use public function
                     if typedef_def:
                         # Replace the IdentifierType with the actual typedef's type
                         if isinstance(current_type.type, c_ast.IdentifierType):
@@ -196,7 +188,7 @@ def _expand_in_place(struct_node, ast):
             # After resolving typedefs, check for nested structs that might be defined inline
             # or referenced by name.
             # This part is complex and might require a separate AST traversal or a more
-            # sophisticated type resolution system. For now, we rely on _extract_base_type_info
+            # sophisticated type resolution system. For now, we rely on extract_base_type_info
             # to correctly identify struct types.
             
             new_decls.append(decl)
@@ -206,7 +198,6 @@ def _expand_in_place(struct_node, ast):
 def generate_cbor_code_for_struct(struct_node, ast):
     """
     Generates CBOR encoding/decoding code for a given struct_node.
-    (Implementation assumed to be present)
     """
     struct_name = struct_node.name
     if not struct_name:
@@ -217,9 +208,9 @@ def generate_cbor_code_for_struct(struct_node, ast):
         for decl in struct_node.decls:
             if isinstance(decl, c_ast.Decl):
                 member_name = decl.name
-                type_info = _extract_base_type_info(decl.type, ast)
+                type_info = extract_base_type_info(decl.type, ast) # Use public function
                 
-                # Handle cases where _extract_base_type_info might return None for type_name
+                # Handle cases where extract_base_type_info might return None for type_name
                 if type_info['type_name'] is None:
                     logger.warning(f"Skipping member '{member_name}' in struct '{struct_name}' due to unresolvable type.")
                     continue
@@ -283,7 +274,7 @@ def main():
                 
                 # Ensure struct is fully expanded before generating code
                 # This modifies struct_node in place by resolving typedefs and nested structs
-                _expand_in_place(struct_node, file_ast) 
+                expand_in_place(struct_node, file_ast) # Use public function
 
                 # Extract members and create StructDefinition
                 members = []
@@ -291,7 +282,7 @@ def main():
                     for decl in struct_node.decls:
                         if isinstance(decl, c_ast.Decl):
                             member_name = decl.name
-                            type_info = _extract_base_type_info(decl.type, file_ast)
+                            type_info = extract_base_type_info(decl.type, file_ast) # Use public function
                             if type_info['type_name'] is None:
                                 logger.warning(f"Skipping member '{member_name}' in struct '{struct_node.name}' due to unresolvable type.")
                                 continue

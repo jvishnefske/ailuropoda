@@ -25,4 +25,4 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = ["src"] # Changed to include the 'src' directory
