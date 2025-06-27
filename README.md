@@ -34,11 +34,11 @@ Manually handling CBOR for complex C data structures is a time sink. `Ailuropoda
     *   Fixed-size character arrays (`char name[64]`) as CBOR text strings.
     *   Character pointers (`char* email`, `const char* notes`) as CBOR text strings.
     *   Nested structs.
-    *   Fixed-size arrays of basic types or nested structs.
+    *   Fixed-size arrays of primitive types or nested structs.
 *   **Ready-to-Use Output**: Generates a dedicated output directory containing:
     *   `cbor_generated.h` and `cbor_generated.c` with your encode/decode functions.
     *   A `CMakeLists.txt` file to easily compile the generated code and link against TinyCBOR.
-    *   *(Future/Optional)* Helper functions for `cbor2json` and `json2cbor` conversion, simplifying data inspection and interoperability.
+    *   Helper functions for `cbor2json` and `json2cbor` conversion, simplifying data inspection and interoperability.
 *   **Simplified Development**: Define your data structures in C headers, and let `Ailuropoda` handle the rest!
  
 ---
@@ -114,3 +114,16 @@ We welcome contributions! Feel free to open issues or pull requests on our GitHu
 ## 📄 License
 
 This project is licensed under the [BSD 3-Clause License](LICENSE).
+
+---
+
+## 🚧 TODO / Future Enhancements
+
+We're continuously working to improve `Ailuropoda`. Here are some planned features:
+
+*   **CBOR to JSON / JSON to CBOR Helpers**: Implement optional C helper functions for converting between CBOR and JSON, simplifying debugging and interoperability.
+*   **Dynamic Memory Management for Pointers**: Enhance `char*` and other pointer decoding to optionally handle dynamic memory allocation (`malloc`/`free`) for decoded data, reducing the burden on the user.
+*   **Union Type Support**: Add support for C `union` types.
+*   **Enum Type Support**: Generate appropriate CBOR representations for C `enum` types.
+*   **Improved Error Handling**: Provide more granular error codes and messages in the generated C functions.
+*   **Advanced Array Support**: Explore support for multi-dimensional arrays and flexible array members.
