@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import shutil
 import os
+import sys # Added import for sys
 from jinja2 import Environment, FileSystemLoader
 
 # Define paths relative to the current test file
