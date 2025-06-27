@@ -25,4 +25,4 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"] # Changed to include the 'src' directory
+pythonpath = ["."] # Set project root as Python path for module discovery
