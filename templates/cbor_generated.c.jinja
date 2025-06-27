@@ -15,17 +15,18 @@ static bool decode_text_string(char* buffer, size_t buffer_size, CborValue* it) 
     if (cbor_value_get_type(it) != CborTextStringType) {
         return false;
     }
-    size_t len;
-    CborError err = cbor_value_get_string_length(it, &len);
+    size_t cbor_string_len;
+    CborError err = cbor_value_get_string_length(it, &cbor_string_len);
     if (err != CborNoError) return false;
 
-    if (len >= buffer_size) { // Check for buffer overflow
+    if (cbor_string_len >= buffer_size) { // Check for buffer overflow (need space for null terminator)
         return false;
     }
 
-    err = cbor_value_copy_text_string(it, buffer, &len, NULL);
+    size_t actual_copied_len = buffer_size; // Initialize with max buffer size
+    err = cbor_value_copy_text_string(it, buffer, &actual_copied_len, NULL);
     if (err != CborNoError) return false;
-    buffer[len] = '\0'; // Null-terminate
+    buffer[actual_copied_len] = '\0'; // Null-terminate at the actual copied length
     cbor_value_advance(it);
     return true;
 }
@@ -40,19 +41,21 @@ static bool decode_char_ptr(char** ptr, size_t max_len, CborValue* it) {
     if (cbor_value_get_type(it) != CborTextStringType) {
         return false;
     }
-    size_t len;
-    CborError err = cbor_value_get_string_length(it, &len);
+    size_t cbor_string_len;
+    CborError err = cbor_value_get_string_length(it, &cbor_string_len);
     if (err != CborNoError) return false;
 
-    if (len >= max_len) { // Check for buffer overflow
+    if (cbor_string_len >= max_len) { // Check for buffer overflow (need space for null terminator)
         return false;
     }
     
     // Assuming *ptr points to an already allocated buffer of at least max_len
     if (!*ptr) return false; // Buffer not allocated for pointer
-    err = cbor_value_copy_text_string(it, *ptr, &len, NULL);
+
+    size_t actual_copied_len = max_len; // Initialize with max buffer size
+    err = cbor_value_copy_text_string(it, *ptr, &actual_copied_len, NULL);
     if (err != CborNoError) return false;
-    (*ptr)[len] = '\0'; // Null-terminate
+    (*ptr)[actual_copied_len] = '\0'; // Null-terminate
     cbor_value_advance(it);
     return true;
 }
