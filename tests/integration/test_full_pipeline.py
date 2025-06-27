@@ -98,7 +98,10 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
     # The main build directory will be at PROJECT_ROOT / 'build' / 'test_run_build_dir'
 
     # Get cpp_path and cpp_args from the fixture
-    cpp_path, cpp_args = cpp_info
+    # The cpp_info fixture returns a dictionary, so unpack it correctly
+    cpp_path = cpp_info['cpp_path']
+    cpp_args = cpp_info['cpp_args']
+
     generated_c_file_name = "cbor_generated.c"
     generated_h_file_name = "cbor_generated.h"
     generated_cmake_file_name = "CMakeLists.txt"
