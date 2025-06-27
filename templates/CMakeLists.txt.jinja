@@ -20,8 +20,8 @@ message(STATUS "Found TinyCBOR include directory: ${TINYCBOR_INCLUDE_DIR}")
 
 # Include the dependency management file
 # This path is relative to the CMakeLists.txt being generated.
-# The dependency.cmake file is in the project root, so we need to go up two levels.
-include(${CMAKE_CURRENT_SOURCE_DIR}/../../dependency.cmake)
+# The dependency.cmake file is now copied to the output directory, so it's in the same directory.
+include(dependency.cmake)
 
 # Call the function to set up doctest
 setup_doctest_single_header()
