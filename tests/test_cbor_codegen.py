@@ -1,6 +1,15 @@
 import pytest
 from pycparser import c_ast
-from src.cbor_codegen import parse_c_string, find_struct, find_typedef, expand_in_place, get_type_info, generate_cbor_code
+import sys
+from pathlib import Path
+
+# Add the 'src' directory to sys.path to allow importing 'ailuropoda'
+# This assumes the test is run from the project root or a subdirectory
+# where 'src' is a direct sibling.
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / 'src'))
+
+from ailuropoda.cbor_codegen import parse_c_string, find_struct, find_typedef, expand_in_place, get_type_info, generate_cbor_code
 import os
 import tempfile
 
@@ -295,7 +304,7 @@ def test_get_type_info_struct_array(cpp_info):
 def test_generate_cbor_code_for_struct_simple(tmp_path, cpp_info):
     c_code = """
     #include <stdint.h>
-    #include <stdbool.h>
+    #include <stdbool.h;>
     struct SimpleData {
         int32_t id;
         char name[32];
