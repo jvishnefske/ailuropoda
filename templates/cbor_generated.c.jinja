@@ -189,9 +189,10 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
                 if (!decode_{{ member.type_name }}(data->{{ member.name }}, &map_it)) return false;
             }
             {% elif member.type_category == 'char_ptr' %}
-            // For char*, assume data->{{ member.name }} is pre-allocated with sufficient size.
-            // The hardcoded '256' below is a placeholder. In a real application, this
-            // max_len should be derived from metadata or passed by the user.
+            // For char* members, the maximum length is not known from the C AST.
+            // The '256' below is a hardcoded placeholder. In a real application,
+            // this max_len should be derived from metadata or passed by the user,
+            // or memory should be dynamically allocated.
             if (!decode_char_ptr(&data->{{ member.name }}, 256, &map_it)) return false;
             {% elif member.type_category == 'char_array' %}
             if (!decode_text_string(data->{{ member.name }}, sizeof(data->{{ member.name }}), &map_it)) return false;

@@ -1,16 +1,16 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include "doctest/doctest.h"
+#include "doctest.h" // Corrected include path
 
 #include "cbor_generated.h"
-#include "{{ input_header_path }}" // This will be simple_data.h
-#include <string.h>
-#include <stdio.h>
+#include "{{ input_header_path }}" // Include the original header for struct definitions
+#include <string.h> // For strcmp, etc.
 #include <stdlib.h> // For malloc/free for char* members
-#include <math.h>   // For fabsf for float comparison
 
-// Test case for SimpleData
-TEST_CASE("SimpleData encoding and decoding") {
-    // Original data
+// Define a buffer for CBOR encoding/decoding
+#define CBOR_BUFFER_SIZE 512 // Increased buffer size for nested data
+static uint8_t cbor_buffer[CBOR_BUFFER_SIZE];
+
+DOCTEST_TEST_CASE("SimpleData encoding and decoding") {
     struct SimpleData original_data = {
         .id = 12345,
         .is_active = true,
@@ -20,41 +20,27 @@ TEST_CASE("SimpleData encoding and decoding") {
     strncpy(original_data.name, "Test Name", sizeof(original_data.name) - 1);
     original_data.name[sizeof(original_data.name) - 1] = '\0';
 
-    printf("Original ID: %d\n", original_data.id);
-    printf("Original Name: |%s|\n", original_data.name);
-    printf("Original Is Active: %s\n", original_data.is_active ? "true" : "false");
-    printf("Original Temperature: %f\n", original_data.temperature);
-    printf("Original Flags: [%d, %d, %d, %d]\n", original_data.flags[0], original_data.flags[1], original_data.flags[2], original_data.flags[3]);
-
-    // Encode
-    uint8_t buffer[256]; // Sufficiently large buffer
     CborEncoder encoder;
-    cbor_encoder_init(&encoder, buffer, sizeof(buffer), 0);
+    cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
 
     bool encode_ok = encode_SimpleData(&original_data, &encoder);
     REQUIRE(encode_ok); // Use REQUIRE to stop if encoding fails
 
-    size_t encoded_len = cbor_encoder_get_buffer_size(&encoder, buffer);
-    printf("SimpleData encoded successfully. Encoded size: %zu bytes\n", encoded_len);
+    size_t encoded_len = cbor_encoder_get_buffer_size(&encoder, cbor_buffer);
+    DOCTEST_MESSAGE("SimpleData encoded successfully. Encoded size: ", encoded_len, " bytes");
 
-    // Decode
     struct SimpleData decoded_data;
     memset(&decoded_data, 0, sizeof(decoded_data)); // Initialize to zero
 
     CborParser parser;
     CborValue it;
-    CborError err = cbor_parser_init(buffer, encoded_len, 0, &parser, &it);
+    CborError err = cbor_parser_init(cbor_buffer, encoded_len, 0, &parser, &it);
     REQUIRE(err == CborNoError); // Use REQUIRE to stop if parser init fails
 
     bool decode_ok = decode_SimpleData(&decoded_data, &it);
     REQUIRE(decode_ok); // Use REQUIRE to stop if decoding fails
 
-    printf("SimpleData decoded successfully.\n");
-    printf("Decoded ID: %d\n", decoded_data.id);
-    printf("Decoded Name: |%s|\n", decoded_data.name);
-    printf("Decoded Is Active: %s\n", decoded_data.is_active ? "true" : "false");
-    printf("Decoded Temperature: %f\n", decoded_data.temperature);
-    printf("Decoded Flags: [%d, %d, %d, %d]\n", decoded_data.flags[0], decoded_data.flags[1], decoded_data.flags[2], decoded_data.flags[3]);
+    DOCTEST_MESSAGE("SimpleData decoded successfully.");
 
     // Assertions
     CHECK(decoded_data.id == original_data.id);
@@ -68,7 +54,7 @@ TEST_CASE("SimpleData encoding and decoding") {
 }
 
 // Test case for NestedData (requires manual char* allocation for description)
-TEST_CASE("NestedData encoding and decoding") {
+DOCTEST_TEST_CASE("NestedData encoding and decoding") {
     // Original data
     struct NestedData original_nested_data = {
         .inner_data = {
@@ -85,19 +71,14 @@ TEST_CASE("NestedData encoding and decoding") {
     const char* original_description_str = "This is a test description for NestedData.";
     original_nested_data.description = (char*)original_description_str; // Point to a const string for encoding
 
-    printf("\nOriginal NestedData Value: %d\n", original_nested_data.value);
-    printf("Original NestedData Description: |%s|\n", original_nested_data.description);
-
-    // Encode
-    uint8_t buffer[512]; // Larger buffer for nested struct
     CborEncoder encoder;
-    cbor_encoder_init(&encoder, buffer, sizeof(buffer), 0);
+    cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
 
     bool encode_ok = encode_NestedData(&original_nested_data, &encoder);
     REQUIRE(encode_ok);
 
-    size_t encoded_len = cbor_encoder_get_buffer_size(&encoder, buffer);
-    printf("Encoded NestedData size: %zu bytes\n", encoded_len);
+    size_t encoded_len = cbor_encoder_get_buffer_size(&encoder, cbor_buffer);
+    DOCTEST_MESSAGE("Encoded NestedData size: ", encoded_len, " bytes");
 
     // Decode
     struct NestedData decoded_nested_data;
@@ -111,14 +92,13 @@ TEST_CASE("NestedData encoding and decoding") {
 
     CborParser parser;
     CborValue it;
-    err = cbor_parser_init(buffer, encoded_len, 0, &parser, &it);
+    CborError err = cbor_parser_init(cbor_buffer, encoded_len, 0, &parser, &it);
     REQUIRE(err == CborNoError);
 
     bool decode_ok = decode_NestedData(&decoded_nested_data, &it);
     REQUIRE(decode_ok);
 
-    printf("Decoded NestedData Value: %d\n", decoded_nested_data.value);
-    printf("Decoded NestedData Description: |%s|\n", decoded_nested_data.description);
+    DOCTEST_MESSAGE("NestedData decoded successfully.");
 
     // Assertions for NestedData
     CHECK(decoded_nested_data.value == original_nested_data.value);

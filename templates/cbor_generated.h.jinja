@@ -8,11 +8,6 @@
 // Include the original header file that defines the structs
 #include "{{ original_header_path }}"
 
-// Forward declarations for structs (might be redundant if original_header_path defines them fully)
-{% for struct in structs %}
-// struct {{ struct.name }}; // Removed: Assumed to be defined by original_header_path
-{% endfor %}
-
 // Encode/Decode function declarations
 {% for struct in structs %}
 bool encode_{{ struct.name }}(const struct {{ struct.name }}* data, CborEncoder* encoder);
