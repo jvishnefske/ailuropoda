@@ -111,6 +111,34 @@ uv sync --dev
 
 ---
 
+## 💡 Development & Testing Insights
+
+### Python Environment and Project Configuration
+
+`Ailuropoda` follows modern Python packaging and dependency management best practices, leveraging `uv` and `pyproject.toml`.
+
+*   **`pyproject.toml` (PEP 621)**: This file serves as the single source of truth for project metadata, dependencies, and build system configuration. It adheres to PEP 621, making the project easily discoverable and installable by tools like `pip`, `uv`, or `rye`.
+*   **`uv` for Virtual Environments**: `uv` is used for fast dependency resolution and virtual environment management. Commands like `uv sync` ensure all project dependencies (and development dependencies with `--dev`) are installed into an isolated virtual environment.
+*   **Running Scripts**: Always use `uv run python <script_path>` (or `uv run <module_name>`) to execute project scripts. This automatically activates the virtual environment and ensures the correct Python interpreter and installed packages are used. This approach eliminates the need for manual `source .venv/bin/activate` or manipulating the `PATH` environment variable, promoting a cleaner and more reliable development workflow.
+
+### C/C++ Integration Testing with Pytest
+
+The project includes robust integration tests (`tests/integration/test_full_pipeline.py`) to ensure the entire code generation, compilation, and execution pipeline works as expected.
+
+*   **Pytest Fixtures**: Pytest fixtures are extensively used to set up and tear down the testing environment:
+    *   `tmp_path`: Provides a unique, temporary directory for each test, ensuring isolation and preventing test interference. All generated files (C code, build artifacts) are placed here.
+    *   `tinycbor_install_path`: This fixture handles the compilation and installation of the `TinyCBOR` C library, which `Ailuropoda`'s generated code depends on. It ensures `TinyCBOR` is available in a known location for subsequent compilation steps.
+    *   `setup_test_environment`: This orchestrates the core integration steps:
+        1.  It calls `ailuropoda.cbor_codegen.generate_cbor_code` to generate the `cbor_generated.h`, `cbor_generated.c`, and `CMakeLists.txt` files into the `tmp_path`.
+        2.  It then uses `subprocess` to invoke `cmake` and `make` within the generated directory to compile the generated C code, linking it against the `TinyCBOR` library.
+        3.  Finally, it compiles a simple C test harness (e.g., `c_test_harness_simple_data.c.jinja`) that uses the generated CBOR functions, creating an executable binary.
+*   **`subprocess` Module**: Python's `subprocess` module is used to execute external commands, such as `cmake`, `make`, and the compiled C test binaries. This allows the Python tests to drive the C build and execution process.
+*   **Verification**: After execution, the tests can read the output of the C binary (e.g., serialized CBOR data, deserialized values) and compare it against expected results, ensuring correctness of the generated code.
+
+This setup provides a comprehensive way to validate `Ailuropoda`'s output and its compatibility with the target C environment.
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions! Feel free to open issues or pull requests on our GitHub repository: [jvishnefske/Ailuropoda](https://github.com/jvishnefske/Ailuropoda)
