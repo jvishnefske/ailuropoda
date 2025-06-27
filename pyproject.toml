@@ -1,5 +1,5 @@
 [project]
-name = "cbor-codegen-deps"
+name = "ailuropoda"
 version = "0.1.0"
 description = "Dependencies for CBOR code generation"
 license = { text = "BSD-3-Clause" }
