@@ -23,67 +23,97 @@ from tests.test_cbor_codegen import cpp_info
 @pytest.fixture(scope="module") # Changed scope to module to build TinyCBOR once
 def tinycbor_install_path(tmp_path_factory):
     """
-    Fixture to clone, build, and install TinyCBOR and download doctest into a persistent temporary directory.
+    Fixture to clone, build, and install TinyCBOR and download doctest into a persistent directory.
     This path will be used by CMake to find TinyCBOR and doctest.
     """
-    build_path = tmp_path_factory.mktemp("tinycbor_build_env")
-    tinycbor_repo_path = build_path / "tinycbor"
-    tinycbor_build_path = build_path / "build"
-    # Use a persistent install path for TinyCBOR and Doctest
+    # Define persistent paths for source and installation
     persistent_install_path = PROJECT_ROOT / 'build' / 'persistent_deps_install'
+    persistent_tinycbor_repo_path = PROJECT_ROOT / 'build' / 'persistent_deps_src' / 'tinycbor'
+    persistent_doctest_include_dir = persistent_install_path / "include" / "doctest"
+
+    # Ensure parent directories for persistent caches exist
     persistent_install_path.mkdir(parents=True, exist_ok=True)
+    # persistent_tinycbor_repo_path's parent will be created by git clone or its own mkdir if needed
 
-    # Clone TinyCBOR
-    if not tinycbor_repo_path.exists():
-        print(f"Cloning TinyCBOR into {tinycbor_repo_path}...")
-        subprocess.run(
-            ["git", "clone", "https://github.com/intel/tinycbor.git", str(tinycbor_repo_path)],
-            check=True, capture_output=True
-        )
-
+    # --- Handle TinyCBOR ---
     # Check if TinyCBOR is already installed in the persistent location
-    if not (persistent_install_path / "include" / "tinycbor").exists() or \
-       not (persistent_install_path / "lib").exists():
-        print(f"\nPersistent TinyCBOR cache not found or incomplete. Building into {persistent_install_path}...")
+    tinycbor_installed_check = (persistent_install_path / "include" / "tinycbor").exists() and \
+                               (persistent_install_path / "lib").exists()
+
+    if not tinycbor_installed_check:
+        print(f"\nPersistent TinyCBOR cache not found or incomplete. Attempting to build and install into {persistent_install_path}...")
+
+        # 1. Ensure TinyCBOR source is available (clone if not present)
+        if not (persistent_tinycbor_repo_path / ".git").exists():
+            print(f"Cloning TinyCBOR into {persistent_tinycbor_repo_path}...")
+            try:
+                # Ensure parent directory for the repo exists before cloning
+                persistent_tinycbor_repo_path.parent.mkdir(parents=True, exist_ok=True)
+                subprocess.run(
+                    ["git", "clone", "https://github.com/intel/tinycbor.git", str(persistent_tinycbor_repo_path)],
+                    check=True, capture_output=True
+                )
+            except subprocess.CalledProcessError as e:
+                print(f"Failed to clone TinyCBOR:\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}")
+                pytest.fail("Failed to clone TinyCBOR")
+        else:
+            print(f"Using existing TinyCBOR source from {persistent_tinycbor_repo_path}")
+            # Optional: pull latest changes if online, but for offline, just use existing
+            # try:
+            #     subprocess.run(["git", "pull"], cwd=persistent_tinycbor_repo_path, check=True, capture_output=True)
+            #     print("Pulled latest TinyCBOR changes.")
+            # except subprocess.CalledProcessError as e:
+            #     print(f"Failed to pull TinyCBOR changes (might be offline): {e.stderr}")
+
+        # 2. Build and install TinyCBOR from the persistent source
+        # Use a temporary build directory for TinyCBOR to ensure a clean build environment
+        tinycbor_build_path = tmp_path_factory.mktemp("tinycbor_build")
         tinycbor_build_path.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            ["cmake", str(tinycbor_repo_path),
-             "-DCMAKE_INSTALL_PREFIX=" + str(persistent_install_path),
-             "-DCBOR_CONVERTER=OFF",
-             "-DCMAKE_BUILD_TYPE=Release"],
-            cwd=tinycbor_build_path,
-            check=True, capture_output=True, text=True
-        )
-        subprocess.run(
-            ["cmake", "--build", ".", "--target", "install"],
-            cwd=tinycbor_build_path,
-            check=True, capture_output=True, text=True
-        )
-        print(f"TinyCBOR installed to persistent cache at {persistent_install_path}")
+
+        try:
+            subprocess.run(
+                ["cmake", str(persistent_tinycbor_repo_path), # Source is the persistent repo
+                 "-DCMAKE_INSTALL_PREFIX=" + str(persistent_install_path),
+                 "-DCBOR_CONVERTER=OFF",
+                 "-DCMAKE_BUILD_TYPE=Release"],
+                cwd=tinycbor_build_path, # Build in the temporary build dir
+                check=True, capture_output=True, text=True
+            )
+            subprocess.run(
+                ["cmake", "--build", ".", "--target", "install"],
+                cwd=tinycbor_build_path,
+                check=True, capture_output=True, text=True
+            )
+            print(f"TinyCBOR installed to persistent cache at {persistent_install_path}")
+        except subprocess.CalledProcessError as e:
+            print(f"TinyCBOR build/install failed:\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}")
+            pytest.fail("TinyCBOR build/install failed")
     else:
         print(f"\nUsing persistent TinyCBOR cache from {persistent_install_path}")
 
+    # --- Handle doctest ---
     # Download doctest if not already present in the persistent cache
-    doctest_include_dir = persistent_install_path / "include" / "doctest"
-    if not doctest_include_dir.exists() or not (doctest_include_dir / "doctest.h").exists():
-        print(f"Downloading doctest to {doctest_include_dir}...")
-        doctest_temp_dir = build_path / "doctest_temp"
-        doctest_temp_dir.mkdir(exist_ok=True)
+    if not persistent_doctest_include_dir.exists() or not (persistent_doctest_include_dir / "doctest.h").exists():
+        print(f"Downloading doctest to {persistent_doctest_include_dir}...")
+        # Use a temporary directory for downloading doctest
+        doctest_temp_dir = tmp_path_factory.mktemp("doctest_temp")
         try:
-            # Use curl or similar to download the raw header file
-            # This is a simple way for header-only libs. For more complex, FetchContent in CMake is better.
             subprocess.run(
                 ["curl", "-L", "https://github.com/doctest/doctest/releases/latest/download/doctest.h", "-o", str(doctest_temp_dir / "doctest.h")],
                 check=True, capture_output=True, text=True
             )
-            doctest_include_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy(doctest_temp_dir / "doctest.h", doctest_include_dir / "doctest.h")
+            persistent_doctest_include_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy(doctest_temp_dir / "doctest.h", persistent_doctest_include_dir / "doctest.h")
             print("doctest.h downloaded and cached.")
         except subprocess.CalledProcessError as e:
             print(f"Failed to download doctest: {e.stderr}")
             pytest.fail("Failed to download doctest")
         finally:
-            shutil.rmtree(doctest_temp_dir)
+            # Clean up the temporary download directory
+            if doctest_temp_dir.exists():
+                shutil.rmtree(doctest_temp_dir)
+    else:
+        print(f"Using persistent doctest cache from {persistent_doctest_include_dir}")
 
     yield persistent_install_path
 
