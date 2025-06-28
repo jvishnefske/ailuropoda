@@ -206,7 +206,7 @@ def test_full_cbor_pipeline(setup_test_environment):
     cmake_configure_args = [
         "cmake",
         str(PROJECT_ROOT), # Source directory is project root
-        f"-B{main_build_dir.name}", # Binary directory relative to cwd
+        "-B.", # Binary directory is the current working directory (main_build_dir)
         f"-DCMAKE_PREFIX_PATH={tinycbor_install_path}", # Point CMake to TinyCBOR and Doctest install
         f"-DGENERATED_CODE_DIR={output_dir}", # Pass the path to the generated code
         "-DCMAKE_BUILD_TYPE=Release"
