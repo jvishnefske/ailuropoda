@@ -1,5 +1,6 @@
 import pytest
 from pycparser import c_ast
+import pycparser # Import pycparser to get its fake_libc_include path
 import sys
 from pathlib import Path
 
@@ -26,9 +27,23 @@ import re # Added for flexible regex matching in assertions
 @pytest.fixture(scope="module")
 def cpp_info():
     """Fixture to provide cpp_path and cpp_args for pycparser."""
-    # For unit tests, we rely on pycparser's ability to find standard headers
-    # if cpp is in PATH. If not, this might need more robust system include discovery.
-    return {"cpp_path": "cpp", "cpp_args": []}
+    # Get the path to pycparser's fake_libc_include directory
+    # This provides mock headers for standard C libraries, preventing 'No such file or directory' errors
+    # during parsing when using standard includes like <stdint.h> or <stdbool.h>.
+    fake_libc_include_path = Path(pycparser.__file__).parent / 'fake_libc_include'
+
+    # The cpp_args include necessary preprocessor definitions and include paths
+    # to allow pycparser to correctly parse C code with standard library includes.
+    # -E: Run only the preprocessor
+    # -D__STDC_WANT_LIB_EXT1__: Required by pycparser for some system headers it might encounter.
+    # -I: Add include path for fake_libc_include.
+    cpp_args = [
+        '-E',
+        f'-I{fake_libc_include_path}',
+        '-D__STDC_WANT_LIB_EXT1__',
+    ]
+
+    return {"cpp_path": "cpp", "cpp_args": cpp_args}
 
 
 def test_parse_c_string_with_includes(cpp_info):
