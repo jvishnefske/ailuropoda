@@ -22,48 +22,6 @@ static bool decode_text_string(char* buffer, size_t buffer_size, CborValue* it) 
     CborError err = cbor_value_get_string_length(it, &cbor_string_len);
     if (err != CborNoError) return false;
 
-// Helper to decode a text string into a fixed-size buffer
-static bool decode_text_string(char* buffer, size_t buffer_size, CborValue* it) {
-    // Zero out the buffer before copying to ensure null termination beyond copied length
-    memset(buffer, 0, buffer_size); 
-
-    if (cbor_value_get_type(it) != CborTextStringType) {
-        return false;
-    }
-    size_t cbor_string_len;
-    CborError err = cbor_value_get_string_length(it, &cbor_string_len);
-    if (err != CborNoError) return false;
-
-    // Check for buffer overflow (need space for null terminator)
-    // If cbor_string_len is buffer_size or more, it won't fit (needs buffer_size + 1 for null).
-    if (cbor_string_len >= buffer_size) { 
-        return false;
-    }
-
-    size_t temp_buffer_size = buffer_size; // Use a temporary variable for IN/OUT parameter
-    err = cbor_value_copy_text_string(it, buffer, &temp_buffer_size, NULL);
-    if (err != CborNoError) return false;
-    // TinyCBOR's cbor_value_copy_text_string null-terminates if buffer_size is large enough.
-    // temp_buffer_size is updated to the length *excluding* the null terminator.
-    // So, buffer[temp_buffer_size] should already be '\0'.
-    cbor_value_advance(it);
-    return true;
-}
-
-// Helper to decode a text string into a char* (assumes buffer is pre-allocated)
-static bool decode_char_ptr(char** ptr, size_t max_len, CborValue* it) {
-    if (cbor_value_get_type(it) == CborNullType) {
-        *ptr = NULL;
-        cbor_value_advance(it);
-        return true;
-    }
-    if (cbor_value_get_type(it) != CborTextStringType) {
-        return false;
-    }
-    size_t cbor_string_len;
-    CborError err = cbor_value_get_string_length(it, &cbor_string_len);
-    if (err != CborNoError) return false;
-
     if (cbor_string_len >= max_len) { // Check for buffer overflow (need space for null terminator)
         return false;
     }
