@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 import tempfile
 import shutil  # Import shutil for file operations
+import importlib.resources as resources # Import importlib.resources
 
 from pycparser import CParser, c_ast, parse_file
 from jinja2 import Environment, FileSystemLoader
@@ -282,19 +283,22 @@ def generate_cbor_code(header_file_path, output_dir, cpp_path=None, cpp_args=Non
         processed_structs.append(struct_info)
 
     # Setup Jinja2 environment
-    # Corrected path: go up three levels from cbor_codegen.py to reach project root, then into 'templates'
-    templates_dir = Path(__file__).parent.parent.parent / "templates"
-    project_root = Path(__file__).parent.parent.parent  # Get project root for dependency.cmake
+    # Use importlib.resources to access templates, assuming they are packaged with 'ailuropoda'.
+    # `resources.files().joinpath()` returns a Traversable object, which acts like a Path.
+    templates_dir = resources.files('ailuropoda').joinpath('templates')
     env = Environment(loader=FileSystemLoader(templates_dir), trim_blocks=True, lstrip_blocks=True)
 
     # Copy dependency.cmake to the output directory
-    dependency_cmake_src = project_root / "dependency.cmake"
-    dependency_cmake_dest = output_dir / "dependency.cmake"
-    if dependency_cmake_src.exists():
-        shutil.copy(dependency_cmake_src, dependency_cmake_dest)
-        logger.info(f"Copied {dependency_cmake_src.name} to {output_dir}")
-    else:
-        logger.warning(f"dependency.cmake not found at {dependency_cmake_src}. Skipping copy.")
+    # Also assume dependency.cmake is packaged with 'ailuropoda'.
+    # `resources.as_file` is used because shutil.copy requires an actual file system path.
+    dependency_cmake_resource_path = resources.files('ailuropoda').joinpath('dependency.cmake')
+    with resources.as_file(dependency_cmake_resource_path) as dependency_cmake_src:
+        dependency_cmake_dest = output_dir / "dependency.cmake"
+        if dependency_cmake_src.exists():
+            shutil.copy(dependency_cmake_src, dependency_cmake_dest)
+            logger.info(f"Copied {dependency_cmake_src.name} to {output_dir}")
+        else:
+            logger.warning(f"dependency.cmake not found at {dependency_cmake_src}. Skipping copy.")
 
     # Render C header file
     header_template = env.get_template("cbor_generated.h.jinja")
