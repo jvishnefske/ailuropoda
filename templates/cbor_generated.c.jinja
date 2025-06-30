@@ -212,12 +212,15 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
                 err = cbor_value_get_int(&array_it, (int*)&data->{{ member.name }}[i]);
                 {% elif member.type_name in ['unsigned int', 'unsigned long', 'unsigned short', 'unsigned char', 'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t'] %}
                 if (cbor_value_get_type(&array_it) != CborIntegerType) return false;
-                err = cbor_value_get_uint64(&array_it, (uint64_t*)&data->{{ member.name }}[i]);
+                uint64_t temp_uint_val_array; // Use a temporary uint64_t for reading
+                err = cbor_value_get_uint64(&array_it, &temp_uint_val_array);
+                if (err != CborNoError) return false;
+                data->{{ member.name }}[i] = ({{ member.type_name }})temp_uint_val_array; // Cast to the actual type
                 {% elif member.type_name in ['float', 'float_t'] %}
-                if (!cbor_value_is_float(&array_it)) return false;
+                if (!cbor_value_is_float(&array_it) && !cbor_value_is_double(&array_it)) return false; // Check for both float and double types
                 err = cbor_value_get_float(&array_it, &data->{{ member.name }}[i]);
                 {% elif member.type_name in ['double', 'double_t'] %}
-                if (!cbor_value_is_double(&array_it)) return false;
+                if (!cbor_value_is_double(&array_it) && !cbor_value_is_float(&array_it)) return false; // Check for both double and float types
                 err = cbor_value_get_double(&array_it, &data->{{ member.name }}[i]);
                 {% elif member.type_name in ['bool', '_Bool'] %}
                 if (cbor_value_get_type(&array_it) != CborBooleanType) return false;
@@ -242,12 +245,15 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
             err = cbor_value_get_int(&map_it, (int*)&data->{{ member.name }});
             {% elif member.type_name in ['unsigned int', 'unsigned long', 'unsigned short', 'unsigned char', 'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t'] %}
             if (cbor_value_get_type(&map_it) != CborIntegerType) return false;
-            err = cbor_value_get_uint64(&map_it, (uint64_t*)&data->{{ member.name }});
+            uint64_t temp_uint_val; // Use a temporary uint64_t for reading
+            err = cbor_value_get_uint64(&map_it, &temp_uint_val);
+            if (err != CborNoError) return false;
+            data->{{ member.name }} = ({{ member.type_name }})temp_uint_val; // Cast to the actual type
             {% elif member.type_name in ['float', 'float_t'] %}
-            if (!cbor_value_is_float(&map_it)) return false;
+            if (!cbor_value_is_float(&map_it) && !cbor_value_is_double(&map_it)) return false; // Check for both float and double types
             err = cbor_value_get_float(&map_it, &data->{{ member.name }});
             {% elif member.type_name in ['double', 'double_t'] %}
-            if (!cbor_value_is_double(&map_it)) return false;
+            if (!cbor_value_is_double(&map_it) && !cbor_value_is_float(&map_it)) return false; // Check for both double and float types
             err = cbor_value_get_double(&map_it, &data->{{ member.name }});
             {% elif member.type_name in ['bool', '_Bool'] %}
             if (cbor_value_get_type(&map_it) != CborBooleanType) return false;
