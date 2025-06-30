@@ -7,7 +7,7 @@ import shutil  # Import shutil for file operations
 import importlib.resources as resources # Import importlib.resources
 
 from pycparser import CParser, c_ast, parse_file
-from jinja2 import Environment, PackageLoader
+from jinja2 import Environment, FileSystemLoader
 
 # Configure logging
 logging.basicConfig(
@@ -235,7 +235,7 @@ def parse_c_string(c_code_string, cpp_path=None, cpp_args=None):
         Path(tmp_file_path).unlink()  # Use pathlib for file removal
 
 
-def generate_cbor_code(header_file_path, output_dir, cpp_path=None, cpp_args=None):
+def generate_cbor_code(header_file_path, output_dir, templates_dir, cpp_path=None, cpp_args=None):
     """
     Generates CBOR encoding/decoding C code for structs defined in the given header file.
     """
@@ -283,8 +283,8 @@ def generate_cbor_code(header_file_path, output_dir, cpp_path=None, cpp_args=Non
         processed_structs.append(struct_info)
 
     # Setup Jinja2 environment
-    # Use PackageLoader to access templates within the installed 'ailuropoda' package.
-    env = Environment(loader=PackageLoader('ailuropoda', 'templates'), trim_blocks=True, lstrip_blocks=True)
+    # Use FileSystemLoader with the provided templates_dir.
+    env = Environment(loader=FileSystemLoader(templates_dir), trim_blocks=True, lstrip_blocks=True)
 
     # Copy dependency.cmake to the output directory
     # Also assume dependency.cmake is packaged with 'ailuropoda'.
@@ -348,6 +348,12 @@ def main():
         help="Path to the C preprocessor (cpp) executable. Defaults to 'cpp'.",
     )
     parser.add_argument(
+        "--templates-dir",
+        type=Path,
+        required=True, # Mark as required since it's essential for loading templates
+        help="Path to the directory containing Jinja2 templates (e.g., 'templates/').",
+    )
+    parser.add_argument(
         "--cpp-args",
         nargs=argparse.REMAINDER,
         default=[],
@@ -360,10 +366,17 @@ def main():
         logger.error(f"Error: Header file not found at {args.header_file}")
         sys.exit(1)
 
+    if not args.templates_dir.is_dir():
+        logger.error(f"Error: Templates directory not found at {args.templates_dir}")
+        sys.exit(1)
+
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        generate_cbor_code(args.header_file, args.output_dir, args.cpp_path, args.cpp_args)
+        generate_cbor_code(
+            args.header_file, args.output_dir, args.templates_dir,
+            args.cpp_path, args.cpp_args
+        )
         logger.info("CBOR code generation completed successfully.")
     except Exception as e:
         logger.error(f"CBOR code generation failed: {e}")

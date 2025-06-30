@@ -190,6 +190,7 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
                 *cpp_args,  # Pass cpp_args from fixture
                 # Pass TinyCBOR include path to pycparser for parsing
                 "-I" + str(tinycbor_install_path / "include"),
+                "--templates-dir", str(TEMPLATES_DIR), # Pass the templates directory explicitly
             ],
             check=True,
             capture_output=True,
