@@ -49,9 +49,9 @@ Manually handling CBOR for complex C data structures is a time sink. `Ailuropoda
 
 ---
 
-## 📦 Installation & Setup
+## 📦 Installation
 
-`Ailuropoda` is available on PyPI, making installation straightforward with various Python package managers.
+`Ailuropoda` is available on PyPI, making installation straightforward.
 
 ### Global Installation (Recommended for CLI Tools)
 
@@ -64,7 +64,7 @@ pipx install ailuropoda
 
 ### Virtual Environment Installation
 
-For project-specific dependencies or development:
+For project-specific dependencies:
 
 **Using `uv` (recommended for fast dependency management):**
 
@@ -94,18 +94,6 @@ pip install ailuropoda
 pip install pipenv
 pipenv install ailuropoda
 pipenv shell
-```
-
-### For Development & Testing
-
-If you are contributing to `Ailuropoda` or running its tests from the source repository:
-
-```bash
-# Navigate to your project directory
-cd /path/to/Ailuropoda
-
-# Create and synchronize the virtual environment with core and development dependencies
-uv sync --dev
 ```
 
 ## 🚀 Usage
@@ -148,9 +136,33 @@ uv sync --dev
 *   **CBOR Map Keys**: Struct member names are used directly as CBOR map keys (text strings).
 *   **Anonymous Structs**: Anonymous struct definitions that are not part of a `typedef` or a named member are skipped.
 
+
 ---
 
-## 💡 Development & Testing Insights
+## 🤝 Contributing
+
+We welcome contributions! Feel free to open issues or pull requests on our GitHub repository: [jvishnefske/Ailuropoda](https://github.com/jvishnefske/Ailuropoda)
+
+## 📄 License
+
+This project is licensed under the [BSD 3-Clause License](LICENSE).
+
+---
+
+---
+
+## 💡 For Developers
+
+If you are contributing to `Ailuropoda` or running its tests from the source repository, follow these steps:
+
+### Development Setup
+
+Navigate to your project directory and synchronize the virtual environment with core and development dependencies:
+
+```bash
+cd /path/to/Ailuropoda
+uv sync --dev
+```
 
 ### Python Environment and Project Configuration
 
@@ -175,18 +187,6 @@ The project includes robust integration tests (`tests/integration/test_full_pipe
 *   **Verification**: After execution, the tests can read the output of the C binary (e.g., serialized CBOR data, deserialized values) and compare it against expected results, ensuring correctness of the generated code.
 
 This setup provides a comprehensive way to validate `Ailuropoda`'s output and its compatibility with the target C environment.
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Feel free to open issues or pull requests on our GitHub repository: [jvishnefske/Ailuropoda](https://github.com/jvishnefske/Ailuropoda)
-
-## 📄 License
-
-This project is licensed under the [BSD 3-Clause License](LICENSE).
-
----
 
 ## 🚧 TODO / Future Enhancements
 
