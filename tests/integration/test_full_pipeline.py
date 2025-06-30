@@ -176,6 +176,10 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
     # 1. Run the code generator script as a subprocess
     print(f"Running src/ailuropoda/cbor_codegen.py for {HEADER_FILE} into {output_dir}")
     try:
+        # Prepare all cpp arguments including the TinyCBOR include path
+        all_cpp_args = list(cpp_args) # Make a mutable copy
+        all_cpp_args.append("-I" + str(tinycbor_install_path / "include"))
+
         subprocess.run(
             [
                 sys.executable,  # Use the current Python interpreter
@@ -186,11 +190,9 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
                 str(output_dir),
                 "--cpp-path",
                 cpp_path,  # Pass cpp_path from fixture
+                "--templates-dir", str(TEMPLATES_DIR), # Pass the templates directory explicitly before --cpp-args
                 "--cpp-args",
-                *cpp_args,  # Pass cpp_args from fixture
-                # Pass TinyCBOR include path to pycparser for parsing
-                "-I" + str(tinycbor_install_path / "include"),
-                "--templates-dir", str(TEMPLATES_DIR), # Pass the templates directory explicitly
+                *all_cpp_args,  # Pass all preprocessor arguments as the final positional arguments
             ],
             check=True,
             capture_output=True,

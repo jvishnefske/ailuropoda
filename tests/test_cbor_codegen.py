@@ -7,6 +7,7 @@ from pathlib import Path
 # This assumes the test is run from the project root or a subdirectory
 # where 'src' is a direct sibling.
 PROJECT_ROOT = Path(__file__).parent.parent
+TEMPLATES_DIR = PROJECT_ROOT / "templates" # Define TEMPLATES_DIR for this test file
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from ailuropoda.cbor_codegen import (
@@ -349,6 +350,7 @@ def test_generate_cbor_code_for_struct_simple(tmp_path, cpp_info):
     generate_cbor_code(
         header_file,
         output_dir,
+        TEMPLATES_DIR, # Pass the templates_dir argument
         cpp_path=cpp_info["cpp_path"],
         cpp_args=cpp_info["cpp_args"],
     )
