@@ -37,8 +37,9 @@ TEST_CASE("SimpleData encoding and decoding") {
 
     CborParser parser; CborValue it;
     CborError err = cbor_parser_init(buffer, encoded_len, 0, &parser, &it);
-    CHECK(err == CborNoError);
-    if (CHECK(decode_SimpleData(&decoded_data, &it))) {
+    CHECK_EQ(err, CborNoError);
+    bool simple_data_decoded_ok = decode_SimpleData(&decoded_data, &it);
+    if (CHECK(simple_data_decoded_ok)) {
         MESSAGE("SimpleData decoded successfully.");
 
         MESSAGE("Decoded ID: " << decoded_data.id);
@@ -51,7 +52,9 @@ TEST_CASE("SimpleData encoding and decoding") {
         CHECK_EQ(decoded_data.name, test_data.name);
         CHECK_EQ(decoded_data.is_active, test_data.is_active);
         CHECK_EQ(decoded_data.temperature, doctest::Approx(test_data.temperature)); // Use Approx for floats
-        CHECK_ARRAY_EQ(decoded_data.flags, test_data.flags, sizeof(test_data.flags));
+        for (size_t i = 0; i < sizeof(test_data.flags); ++i) {
+            CHECK_EQ(decoded_data.flags[i], test_data.flags[i]);
+        }
     }
 }
 
@@ -102,7 +105,8 @@ TEST_CASE("NestedData encoding and decoding") {
     CborParser nested_parser; CborValue nested_it;
     CborError err = cbor_parser_init(nested_buffer, nested_encoded_len, 0, &nested_parser, &nested_it);
     CHECK_EQ(err, CborNoError);
-    if (CHECK(decode_NestedData(&decoded_nested, &nested_it))) {
+    bool nested_data_decoded_ok = decode_NestedData(&decoded_nested, &nested_it);
+    if (CHECK(nested_data_decoded_ok)) {
         MESSAGE("NestedData decoded successfully.");
 
         MESSAGE("Decoded Nested ID: " << decoded_nested.inner_data.id);
@@ -114,7 +118,9 @@ TEST_CASE("NestedData encoding and decoding") {
         CHECK_EQ(decoded_nested.inner_data.name, original_nested.inner_data.name);
         CHECK_EQ(decoded_nested.inner_data.is_active, original_nested.inner_data.is_active);
         CHECK_EQ(decoded_nested.inner_data.temperature, doctest::Approx(original_nested.inner_data.temperature));
-        CHECK_ARRAY_EQ(decoded_nested.inner_data.flags, original_nested.inner_data.flags, sizeof(original_nested.inner_data.flags));
+        for (size_t i = 0; i < sizeof(original_nested.inner_data.flags); ++i) {
+            CHECK_EQ(decoded_nested.inner_data.flags[i], original_nested.inner_data.flags[i]);
+        }
         CHECK_EQ(decoded_nested.description, original_nested.description);
         CHECK_EQ(decoded_nested.value, original_nested.value);
     }
