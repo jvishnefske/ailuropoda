@@ -1,45 +1,58 @@
 # dependency.cmake
-# This file defines functions for managing external dependencies.
+# This file defines functions for managing external dependencies using FetchContent.
 
-function(setup_doctest_single_header)
-    # Define the download destination relative to the current binary directory
-    set(DOCTEST_HEADER_DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}/thirdparty/doctest)
-    set(DOCTEST_HEADER_FILE     ${DOCTEST_HEADER_DEST_DIR}/doctest.h)
+include(FetchContent)
 
-    # Create the directory where the header will be stored
-    file(MAKE_DIRECTORY ${DOCTEST_HEADER_DEST_DIR})
-
-    # Use CMake's file(DOWNLOAD ...) command to fetch the header.
-    # We use a POST_DOWNLOAD step to ensure the directory exists before attempting
-    # the download. CMAKE_CURRENT_SOURCE_DIR is a safe place for temp downloads.
-    message(STATUS "Downloading doctest.h to ${DOCTEST_HEADER_FILE}...")
-    file(DOWNLOAD
-        https://raw.githubusercontent.com/doctest/doctest/refs/heads/master/doctest/doctest.h
-        ${DOCTEST_HEADER_FILE}
-        STATUS download_status
-        LOG download_log
-        # Other options:
-        # TLS_VERIFY OFF # Only use this if you encounter SSL errors and know the risk
+# Function to set up all dependencies
+function(setup_dependencies)
+    # Configure TinyCBOR via FetchContent
+    FetchContent_Declare(
+        tinycbor_proj
+        GIT_REPOSITORY https://github.com/intel/tinycbor.git
+        GIT_TAG        v0.6.1 # Use a specific tag for stability
+        SOURCE_DIR     "${CMAKE_BINARY_DIR}/_deps/tinycbor-src"
+        BINARY_DIR     "${CMAKE_BINARY_DIR}/_deps/tinycbor-build"
+        CONFIGURE_COMMAND "" # TinyCBOR does not need a special configure command beyond CMake
+        BUILD_COMMAND ""     # Build is handled by add_subdirectory
+        INSTALL_COMMAND ""   # No install needed; targets are directly available
     )
+    FetchContent_MakeAvailable(tinycbor_proj)
 
-    # Check download status
-    if(NOT download_status EQUAL 0)
-        message(FATAL_ERROR "Failed to download doctest.h: ${download_log}")
+    # Alias the target for consistency (tinycbor_proj adds tinycbor directly)
+    if(NOT TARGET TinyCBOR::tinycbor)
+        add_library(TinyCBOR::tinycbor INTERFACE IMPORTED)
+        # Assuming the library itself is tinycbor (check TinyCBOR's CMakeLists.txt)
+        set_target_properties(TinyCBOR::tinycbor PROPERTIES
+            INTERFACE_LINK_LIBRARIES "tinycbor" # Link to the actual target provided by TinyCBOR
+            INTERFACE_INCLUDE_DIRECTORIES "${tinycbor_SOURCE_DIR}" # Expose its include directory
+        )
     endif()
-    message(STATUS "doctest.h downloaded successfully.")
 
-    # Create an INTERFACE library for doctest
-    # An INTERFACE library doesn't compile any sources itself. It's used to
-    # propagate properties (like include directories, compile definitions)
-    # to targets that link against it.
-    add_library(doctest_single_header INTERFACE)
+    message(STATUS "TinyCBOR setup via FetchContent.")
 
-    # Add the downloaded header's directory to the interface include directories.
-    # This means any target linking to 'doctest_single_header' will get this
-    # directory added to its include paths.
-    target_include_directories(doctest_single_header INTERFACE
-        $<BUILD_INTERFACE:${DOCTEST_HEADER_DEST_DIR}> # For build tree
-        $<INSTALL_INTERFACE:include>                   # For install tree (if you were installing it)
+    # Configure Doctest via FetchContent (single-header)
+    FetchContent_Declare(
+        doctest_proj
+        GIT_REPOSITORY https://github.com/doctest/doctest.git
+        GIT_TAG        v2.4.11 # Use a specific tag for stability
+        SOURCE_DIR     "${CMAKE_BINARY_DIR}/_deps/doctest-src"
+        BINARY_DIR     "${CMAKE_BINARY_DIR}/_deps/doctest-build"
+        CONFIGURE_COMMAND ""
+        BUILD_COMMAND ""
+        INSTALL_COMMAND ""
     )
-    message(STATUS "doctest_single_header INTERFACE library configured.")
+    FetchContent_MakeAvailable(doctest_proj)
+
+    # Doctest is a header-only library, so we just need its include directory.
+    # Its CMakeLists.txt automatically defines a target `doctest`.
+    # We can create an alias for consistency if needed, but the original target name is fine.
+    # Doctest usually provides a doctest::doctest target if configured correctly.
+    if(NOT TARGET doctest::doctest)
+         # In some Doctest versions, it might just expose the include dir.
+         # For simplicity, we directly add the include directory here if the target isn't found.
+         # For more robust integration, one might use find_package(doctest) after FetchContent_MakeAvailable.
+         message(STATUS "Doctest target 'doctest::doctest' not found. Assuming header-only and setting include directory directly.")
+         include_directories(${doctest_SOURCE_DIR}/doctest) # Assuming the header is in doctest/doctest.h relative to source dir
+    endif()
+    message(STATUS "Doctest setup via FetchContent.")
 endfunction()
