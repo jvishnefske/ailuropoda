@@ -48,7 +48,6 @@ add_custom_command(
         ${HEADER_FILE}
         --output-dir ${GENERATED_OUTPUT_DIR}
         --cpp-path ${CPP_EXECUTABLE}
-        --templates-dir ${TEMPLATES_DIR}
         --cpp-args ${CPP_ARGS}
     DEPENDS
         ${HEADER_FILE}

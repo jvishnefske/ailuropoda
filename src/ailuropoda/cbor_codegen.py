@@ -7,7 +7,7 @@ import shutil  # Import shutil for file operations
 import importlib.resources as resources # Import importlib.resources
 
 from pycparser import CParser, c_ast, parse_file
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, PackageLoader, select_autoescape
 
 # Configure logging
 logging.basicConfig(
@@ -15,6 +15,15 @@ logging.basicConfig(
     format="%(levelname)s:%(name)s:%(filename)s:%(lineno)d %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Setup Jinja2 environment to load templates from the package
+# Use PackageLoader for templates included with the package
+jinja_env = Environment(
+    loader=PackageLoader("ailuropoda", "templates"),
+    autoescape=select_autoescape(["html", "xml"]),
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
 
 # --- AST Traversal and Helper Functions ---
 
@@ -235,7 +244,7 @@ def parse_c_string(c_code_string, cpp_path=None, cpp_args=None):
         Path(tmp_file_path).unlink()  # Use pathlib for file removal
 
 
-def generate_cbor_code(header_file_path, output_dir, templates_dir, cpp_path=None, cpp_args=None):
+def generate_cbor_code(header_file_path, output_dir, cpp_path=None, cpp_args=None):
     """
     Generates CBOR encoding/decoding C code for structs defined in the given header file.
     """
@@ -282,12 +291,44 @@ def generate_cbor_code(header_file_path, output_dir, templates_dir, cpp_path=Non
                 struct_info["members"].append(member_info)
         processed_structs.append(struct_info)
 
-    # Setup Jinja2 environment
-    # Use FileSystemLoader with the provided templates_dir.
-    # env = Environment(loader=FileSystemLoader(templates_dir), trim_blocks=True, lstrip_blocks=True)
+    # Get templates
+    c_template = jinja_env.get_template("cbor_generated.c.jinja")
+    h_template = jinja_env.get_template("cbor_generated.h.jinja")
 
+    # Render templates with processed struct data
+    c_content = c_template.render(structs=processed_structs)
+    h_content = h_template.render(structs=processed_structs)
 
-    logger.info(f"Generated {output_dir / 'CMakeLists.txt'}")
+    # Write output files
+    output_c_file = output_dir / "cbor_generated.c"
+    output_h_file = output_dir / "cbor_generated.h"
+
+    output_c_file.write_text(c_content)
+    output_h_file.write_text(h_content)
+
+    logger.info(f"Generated {output_c_file}")
+    logger.info(f"Generated {output_h_file}")
+
+    # Generate CMakeLists.txt
+    cmake_template = jinja_env.get_template("CMakeLists.txt.jinja")
+    generated_library_name = f"{header_file_path.stem}_cbor_generated"
+    cmake_content = cmake_template.render(
+        generated_library_name=generated_library_name,
+        generated_c_file_name="cbor_generated.c",
+    )
+    output_cmake_file = output_dir / "CMakeLists.txt"
+    output_cmake_file.write_text(cmake_content)
+    logger.info(f"Generated {output_cmake_file}")
+
+    # Copy dependency.cmake to the output directory
+    # Determine project root dynamically
+    project_root = Path(__file__).resolve().parents[2]
+    dependency_cmake_path = project_root / "dependency.cmake"
+    if dependency_cmake_path.exists():
+        shutil.copyfile(dependency_cmake_path, output_dir / "dependency.cmake")
+        logger.info(f"Copied {dependency_cmake_path.name} to {output_dir}")
+    else:
+        logger.warning(f"Could not find {dependency_cmake_path.name}. Generated CMakeLists.txt might fail to find dependencies.")
 
 
 def main():
@@ -322,12 +363,10 @@ def main():
         logger.error(f"Error: Header file not found at {args.header_file}")
         sys.exit(1)
 
-
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    templates_dir = importlib.resources.files("ailuropoda.templates")
     try:
         generate_cbor_code(
-            args.header_file, args.output_dir, templates_dir,
+            args.header_file, args.output_dir,
             args.cpp_path, args.cpp_args
         )
         logger.info("CBOR code generation completed successfully.")
