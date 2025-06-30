@@ -51,38 +51,91 @@ Manually handling CBOR for complex C data structures is a time sink. `Ailuropoda
 
 ## 📦 Installation & Setup
 
+`Ailuropoda` is available on PyPI, making installation straightforward with various Python package managers.
+
+### Global Installation (Recommended for CLI Tools)
+
+For convenient command-line usage without managing virtual environments manually, `pipx` is highly recommended:
+
+```bash
+pip install pipx
+pipx install ailuropoda
+```
+
+### Virtual Environment Installation
+
+For project-specific dependencies or development:
+
+**Using `uv` (recommended for fast dependency management):**
+
 ```bash
 # First, install uv (if you haven't already):
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Navigate to your project directory
-cd /path/to/Ailuropoda
+# Create and synchronize the virtual environment
+uv venv
+uv pip install ailuropoda
 
-# Create and synchronize the virtual environment with core dependencies
-uv sync
+# Activate the environment (optional, uv run/exec handle this)
+source .venv/bin/activate
+```
+
+**Using `pip` (standard installation):**
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install ailuropoda
+```
+
+**Using `pipenv`:**
+
+```bash
+pip install pipenv
+pipenv install ailuropoda
+pipenv shell
 ```
 
 ### For Development & Testing
 
+If you are contributing to `Ailuropoda` or running its tests from the source repository:
+
 ```bash
-# Install development dependencies (including pytest, pytest-subprocess, etc.)
+# Navigate to your project directory
+cd /path/to/Ailuropoda
+
+# Create and synchronize the virtual environment with core and development dependencies
 uv sync --dev
 ```
 
 ## 🚀 Usage
 
-1.  **Run the script**:
-    ```bash
-    uv run python src/cbor_codegen.py <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
-    ```
-    Example:
-    ```bash
-    # Generate CBOR code for my_data.h into the 'generated_cbor' directory
-    uv run python src/cbor_codegen.py tests/my_data.h --output-dir ./generated_cbor
+`Ailuropoda` provides a command-line interface `ailuropoda` (or `ailuropoda.cbor_codegen` if running via `uv run` directly from source).
 
-    # Using uvx for a clean execution environment:
-    # (Note: uvx is typically used for ad-hoc commands. For project work, `uv run` is preferred.)
-    # uvx python src/cbor_codegen.py tests/my_data.h --output-dir ./generated_cbor
+1.  **Run the code generator**:
+    ```bash
+    # Choose your preferred tool: uvx, pipx, pipenv, or uv run (if developing locally)
+
+    # Example: Using pipx (recommended if installed globally via pipx install ailuropoda)
+    pipx run ailuropoda <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
+
+    # Example: Using uvx (for ad-hoc execution without global install)
+    uvx ailuropoda <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
+
+    # Example: Using pipenv (if installed in a pipenv project)
+    pipenv run ailuropoda <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
+
+    # Example: If running from source with uv virtual environment
+    uv run ailuropoda <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
+    ```
+    Concrete Example:
+    ```bash
+    # Generate CBOR code for tests/my_data.h into the 'generated_cbor' directory
+    # Using pipx:
+    pipx run ailuropoda tests/my_data.h --output-dir ./generated_cbor
+
+    # Using uvx:
+    uvx ailuropoda tests/my_data.h --output-dir ./generated_cbor
     ```
 
     This will create a directory (e.g., `generated_cbor`) containing `cbor_generated.h`, `cbor_generated.c`, and a `CMakeLists.txt` file.
