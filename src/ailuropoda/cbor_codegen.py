@@ -7,7 +7,7 @@ import shutil  # Import shutil for file operations
 import importlib.resources as resources # Import importlib.resources
 
 from pycparser import CParser, c_ast, parse_file
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, PackageLoader
 
 # Configure logging
 logging.basicConfig(
@@ -283,10 +283,8 @@ def generate_cbor_code(header_file_path, output_dir, cpp_path=None, cpp_args=Non
         processed_structs.append(struct_info)
 
     # Setup Jinja2 environment
-    # Use importlib.resources to access templates, assuming they are packaged with 'ailuropoda'.
-    # `resources.files().joinpath()` returns a Traversable object, which acts like a Path.
-    templates_dir = resources.files('ailuropoda').joinpath('templates')
-    env = Environment(loader=FileSystemLoader(templates_dir), trim_blocks=True, lstrip_blocks=True)
+    # Use PackageLoader to access templates within the installed 'ailuropoda' package.
+    env = Environment(loader=PackageLoader('ailuropoda', 'templates'), trim_blocks=True, lstrip_blocks=True)
 
     # Copy dependency.cmake to the output directory
     # Also assume dependency.cmake is packaged with 'ailuropoda'.
