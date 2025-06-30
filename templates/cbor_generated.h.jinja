@@ -9,9 +9,17 @@
 #include "{{ original_header_path }}"
 
 // Encode/Decode function declarations
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 {% for struct in structs %}
 bool encode_{{ struct.name }}(const struct {{ struct.name }}* data, CborEncoder* encoder);
 bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it);
 {% endfor %}
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif // CBOR_GENERATED_H
