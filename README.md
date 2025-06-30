@@ -2,12 +2,12 @@
   <a href="https://github.com/jvishnefske/Ailuropoda">
     <img src="https://img.shields.io/badge/Project-Ailuropoda-blueviolet?style=for-the-badge&logo=github" alt="Project Badge">
   </a>
-  <a href="https://github.com/jvishnefske/Ailuropoda/actions/workflows/ci.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/jvishnefske/Ailuropoda/ci.yml?branch=main&style=for-the-badge&logo=githubactions&label=CI%20Build" alt="CI Build Status">
+  <a href="https://github.com/jvishnefske/Ailuropoda/actions/workflows/python-app.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/jvishnefske/Ailuropoda/python-app.yml?branch=main&style=for-the-badge&logo=githubactions&label=CI%20Build" alt="CI Build Status">
   </a>
   <img src="https://img.shields.io/badge/Python-3.8+-blue?style=for-the-badge&logo=python" alt="Python Version">
   <a href="https://github.com/jvishnefske/Ailuropoda/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License: MIT">
+    <img src="https://img.shields.io/badge/License-BSD_3--Clause-orange.svg?style=for-the-badge" alt="License: BSD 3-Clause">
   </a>
 </p>
 
