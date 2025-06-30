@@ -52,9 +52,9 @@ add_custom_command(
     DEPENDS
         ${HEADER_FILE}
         ${SRC_DIR}/ailuropoda/cbor_codegen.py # Dependency on the generator script
-        ${TEMPLATES_DIR}/cbor_generated.c.jinja # Dependency on templates used by generator
-        ${TEMPLATES_DIR}/cbor_generated.h.jinja
-        ${TEMPLATES_DIR}/CMakeLists.txt.jinja # Dependency on CMakeLists template
+        ${TEMPLATES_DIR}/cbor_generated.c.jinja # Dependency on templates used by generator (informational for change detection)
+        ${TEMPLATES_DIR}/cbor_generated.h.jinja # Dependency on templates used by generator (informational for change detection)
+        ${TEMPLATES_DIR}/CMakeLists.txt.jinja # Dependency on CMakeLists template (informational for change detection)
         ${PROJECT_ROOT}/dependency.cmake # Dependency on the dependency setup script
     COMMENT "Generating CBOR code for ${HEADER_FILE} in integration test"
     VERBATIM

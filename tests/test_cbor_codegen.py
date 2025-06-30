@@ -366,7 +366,6 @@ def test_generate_cbor_code_for_struct_simple(tmp_path, cpp_info):
     generate_cbor_code(
         header_file,
         output_dir,
-        TEMPLATES_DIR, # Pass the templates_dir argument
         cpp_path=cpp_info["cpp_path"],
         cpp_args=cpp_info["cpp_args"],
     )
