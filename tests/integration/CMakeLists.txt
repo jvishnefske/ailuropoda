@@ -33,10 +33,9 @@ endif()
 # Add -D__STDC_WANT_LIB_EXT1__ which is needed by pycparser for some system headers.
 set(CPP_ARGS -E -D__STDC_WANT_LIB_EXT1__)
 
-# Construct the full Python command to run the code generator as a module
+# Construct the Python command and environment to run the code generator as a module
 # Set PYTHONPATH to include the 'src' directory so 'ailuropoda' can be found.
-set(PYTHON_COMMAND_PREFIX "${Python3_EXECUTABLE} -m ailuropoda")
-set(PYTHON_ENV_VAR "PYTHONPATH=${SRC_DIR}")
+set(PYTHON_ENV_ARGS "PYTHONPATH=${SRC_DIR}")
 
 # Add custom command to run the code generator
 add_custom_command(
@@ -44,7 +43,8 @@ add_custom_command(
         ${GENERATED_C_FILE}
         ${GENERATED_H_FILE}
     COMMAND
-        ${CMAKE_COMMAND} -E env ${PYTHON_ENV_VAR} ${PYTHON_COMMAND_PREFIX}
+        ${CMAKE_COMMAND} -E env ${PYTHON_ENV_ARGS}
+        ${Python3_EXECUTABLE} -m ailuropoda # Correctly invoke python -m module as separate args
         ${HEADER_FILE}
         --output-dir ${GENERATED_OUTPUT_DIR}
         --cpp-path ${CPP_EXECUTABLE}

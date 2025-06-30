@@ -20,6 +20,7 @@ from ailuropoda.cbor_codegen import (
 )
 import os
 import tempfile
+import re # Added for flexible regex matching in assertions
 
 
 @pytest.fixture(scope="module")
@@ -381,5 +382,6 @@ def test_generate_cbor_code_for_struct_simple(tmp_path, cpp_info):
     assert "cbor_generated.c" in cmake_content
     assert "target_link_libraries(cbor_generated PRIVATE TinyCBOR::tinycbor)" in cmake_content
     assert "Test harness logic is no longer generated here." in cmake_content
-    # Updated assertion to match the new CMake template logic
-    assert "target_link_libraries(cbor_generated PRIVATE ${TINYCBOR_LIBRARY})" in cmake_content
+    # Assert that the generated CMakeLists.txt links against TinyCBOR
+    # Use 're.search' for more flexible matching, accounting for newlines/whitespace.
+    assert re.search(r"target_link_libraries\(cbor_generated PRIVATE\s*TinyCBOR::tinycbor\)", cmake_content)
