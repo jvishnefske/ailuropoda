@@ -8,6 +8,9 @@ project(CborGenerated C CXX) # Ensure CXX is enabled
 find_library(TINYCBOR_LIBRARY tinycbor HINTS ${CMAKE_PREFIX_PATH}/lib NO_DEFAULT_PATH)
 find_path(TINYCBOR_INCLUDE_DIR tinycbor/cbor.h HINTS ${CMAKE_PREFIX_PATH}/include NO_DEFAULT_PATH)
 
+# Find doctest (it's a header-only library, so we just need its include dir)
+find_package(doctest REQUIRED)
+
 if (NOT TINYCBOR_LIBRARY)
     message(FATAL_ERROR "TinyCBOR library not found. Looked in: ${CMAKE_PREFIX_PATH}/lib")
 endif()
@@ -44,13 +47,13 @@ add_executable({{ test_harness_executable_name }} {{ test_harness_c_file_name }}
 target_link_libraries({{ test_harness_executable_name }} PRIVATE
     {{ generated_library_name }}
     ${TINYCBOR_LIBRARY}
-    doctest_single_header # Link against the downloaded single-header doctest
 )
 
 # Add include directories for the test harness
 target_include_directories({{ test_harness_executable_name }} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR} # For cbor_generated.h
     ${TINYCBOR_INCLUDE_DIR} # For tinycbor headers
+    ${doctest_INCLUDE_DIR} # For doctest.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../.. # For the original simple_data.h in tests/integration
 )
 {% endif %}
