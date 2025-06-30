@@ -22,19 +22,30 @@ static bool decode_text_string(char* buffer, size_t buffer_size, CborValue* it) 
     CborError err = cbor_value_get_string_length(it, &cbor_string_len);
     if (err != CborNoError) return false;
 
+// Helper to decode a text string into a fixed-size buffer
+static bool decode_text_string(char* buffer, size_t buffer_size, CborValue* it) {
+    // Zero out the buffer before copying to ensure null termination beyond copied length
+    memset(buffer, 0, buffer_size); 
+
+    if (cbor_value_get_type(it) != CborTextStringType) {
+        return false;
+    }
+    size_t cbor_string_len;
+    CborError err = cbor_value_get_string_length(it, &cbor_string_len);
+    if (err != CborNoError) return false;
+
     // Check for buffer overflow (need space for null terminator)
-    // If cbor_string_len is exactly buffer_size - 1, it fits with null terminator.
-    // If cbor_string_len is buffer_size or more, it won't fit.
+    // If cbor_string_len is buffer_size or more, it won't fit (needs buffer_size + 1 for null).
     if (cbor_string_len >= buffer_size) { 
         return false;
     }
 
-    size_t actual_copied_len = buffer_size; // Initialize with max buffer size (including space for null)
-    err = cbor_value_copy_text_string(it, buffer, &actual_copied_len, NULL);
+    size_t temp_buffer_size = buffer_size; // Use a temporary variable for IN/OUT parameter
+    err = cbor_value_copy_text_string(it, buffer, &temp_buffer_size, NULL);
     if (err != CborNoError) return false;
     // TinyCBOR's cbor_value_copy_text_string null-terminates if buffer_size is large enough.
-    // actual_copied_len is updated to the length *excluding* the null terminator.
-    // So, buffer[actual_copied_len] should already be '\0'.
+    // temp_buffer_size is updated to the length *excluding* the null terminator.
+    // So, buffer[temp_buffer_size] should already be '\0'.
     cbor_value_advance(it);
     return true;
 }
@@ -63,12 +74,12 @@ static bool decode_char_ptr(char** ptr, size_t max_len, CborValue* it) {
     // Zero out the buffer before copying to ensure null termination beyond copied length
     memset(*ptr, 0, max_len);
 
-    size_t actual_copied_len = max_len; // Initialize with max buffer size
-    err = cbor_value_copy_text_string(it, *ptr, &actual_copied_len, NULL);
+    size_t temp_max_len = max_len; // Use a temporary variable for IN/OUT parameter
+    err = cbor_value_copy_text_string(it, *ptr, &temp_max_len, NULL);
     if (err != CborNoError) return false;
     // TinyCBOR's cbor_value_copy_text_string null-terminates if max_len is large enough.
-    // actual_copied_len is updated to the length *excluding* the null terminator.
-    // So, (*ptr)[actual_copied_len] should already be '\0'.
+    // temp_max_len is updated to the length *excluding* the null terminator.
+    // So, (*ptr)[temp_max_len] should already be '\0'.
     cbor_value_advance(it);
     return true;
 }
@@ -89,7 +100,7 @@ bool encode_{{ struct.name }}(const struct {{ struct.name }}* data, CborEncoder*
     if (err != CborNoError) return false;
 
     {% if member.type_category == 'struct' %}
-    if (!encode_{{ member.type_name }}(&data->{{ member.name }}, &map_encoder)) return false;
+    if (!encode_{{ member.name }}(&data->{{ member.name }}, &map_encoder)) return false;
     {% elif member.type_category == 'struct_ptr' %}
     if (data->{{ member.name }}) {
         if (!encode_{{ member.type_name }}(data->{{ member.name }}, &map_encoder)) return false;
@@ -179,14 +190,14 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
         {% for member in struct.members %}
         if (strncmp(key, "{{ member.name }}", key_len) == 0 && strlen("{{ member.name }}") == key_len) {
             {% if member.type_category == 'struct' %}
-            if (!decode_{{ member.type_name }}(&data->{{ member.name }}, &map_it)) return false;
+            if (!decode_{{ member.name }}(&data->{{ member.name }}, &map_it)) return false;
             {% elif member.type_category == 'struct_ptr' %}
             if (cbor_value_get_type(&map_it) == CborNullType) {
                 data->{{ member.name }} = NULL;
                 cbor_value_advance(&map_it);
             } else {
                 if (!data->{{ member.name }}) return false; // Buffer not allocated for pointer
-                if (!decode_{{ member.type_name }}(data->{{ member.name }}, &map_it)) return false;
+                if (!decode_{{ member.name }}(data->{{ member.name }}, &map_it)) return false;
             }
             {% elif member.type_category == 'char_ptr' %}
             // For char* members, the maximum length is not known from the C AST.
@@ -204,9 +215,10 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
             if (err != CborNoError) return false;
             size_t array_len;
             err = cbor_value_get_array_length(&array_it, &array_len);
-            if (err != CborNoError || array_len > {{ member.array_size }}) return false; // Check bounds
+            if (err != CborNoError) return false;
 
-            for (size_t i = 0; i < array_len; ++i) {
+            // Iterate only up to the capacity of the C array
+            for (size_t i = 0; i < array_len && i < {{ member.array_size }}; ++i) {
                 {% if member.type_category == 'struct_array' %}
                 if (!decode_{{ member.type_name }}(&data->{{ member.name }}[i], &array_it)) return false;
                 {% else %} {# primitive array #}
@@ -217,10 +229,10 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
                 if (cbor_value_get_type(&array_it) != CborIntegerType) return false;
                 err = cbor_value_get_uint64(&array_it, (uint64_t*)&data->{{ member.name }}[i]);
                 {% elif member.type_name in ['float', 'float_t'] %}
-                if (cbor_value_get_type(&array_it) != CborFloatType && cbor_value_get_type(&array_it) != CborDoubleType) return false;
+                if (!cbor_value_is_float(&array_it)) return false;
                 err = cbor_value_get_float(&array_it, &data->{{ member.name }}[i]);
                 {% elif member.type_name in ['double', 'double_t'] %}
-                if (cbor_value_get_type(&array_it) != CborDoubleType && cbor_value_get_type(&array_it) != CborFloatType) return false;
+                if (!cbor_value_is_double(&array_it)) return false;
                 err = cbor_value_get_double(&array_it, &data->{{ member.name }}[i]);
                 {% elif member.type_name in ['bool', '_Bool'] %}
                 if (cbor_value_get_type(&array_it) != CborBooleanType) return false;
@@ -233,6 +245,10 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
                 cbor_value_advance(&array_it);
                 {% endif %}
             }
+            // Advance array_it past any remaining elements if array_len > {{ member.array_size }}
+            while (!cbor_value_at_end(&array_it)) {
+                cbor_value_advance(&array_it);
+            }
             err = cbor_value_leave_container(&map_it, &array_it);
             if (err != CborNoError) return false;
             {% elif member.type_category == 'primitive' %}
@@ -243,10 +259,10 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
             if (cbor_value_get_type(&map_it) != CborIntegerType) return false;
             err = cbor_value_get_uint64(&map_it, (uint64_t*)&data->{{ member.name }});
             {% elif member.type_name in ['float', 'float_t'] %}
-            if (cbor_value_get_type(&map_it) != CborFloatType && cbor_value_get_type(&map_it) != CborDoubleType) return false;
+            if (!cbor_value_is_float(&map_it)) return false;
             err = cbor_value_get_float(&map_it, &data->{{ member.name }});
             {% elif member.type_name in ['double', 'double_t'] %}
-            if (cbor_value_get_type(&map_it) != CborDoubleType && cbor_value_get_type(&map_it) != CborFloatType) return false;
+            if (!cbor_value_is_double(&map_it)) return false;
             err = cbor_value_get_double(&map_it, &data->{{ member.name }});
             {% elif member.type_name in ['bool', '_Bool'] %}
             if (cbor_value_get_type(&map_it) != CborBooleanType) return false;
@@ -265,8 +281,8 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
         {% endfor %}
         else {
             // Unknown key, skip it and its value
-            cbor_value_advance(&map_it);
-            cbor_value_advance(&map_it);
+            cbor_value_advance(&map_it); // Advance past the value
+            // Do not advance past the key here, it was already handled before the if/else block
         }
     }
 
