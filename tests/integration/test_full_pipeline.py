@@ -119,11 +119,11 @@ def setup_test_environment(tmp_path, tinycbor_install_path, doctest_git_url):
     # No Python-based code generation or template rendering is done here.
     # The CMakeLists.txt within example_project_source_dir will handle that.
 
-    yield example_project_source_dir, main_build_dir, TEST_EXECUTABLE_NAME, tinycbor_install_path
+    yield example_project_source_dir, main_build_dir, TEST_EXECUTABLE_NAME, tinycbor_install_path, doctest_git_url
 
 
 def test_full_cbor_pipeline(setup_test_environment):
-    example_project_source_dir, main_build_dir, test_executable_name, tinycbor_install_path = setup_test_environment
+    example_project_source_dir, main_build_dir, test_executable_name, tinycbor_install_path, doctest_git_url = setup_test_environment
 
     print(f"Configuring example CMake project in {main_build_dir} from source {example_project_source_dir}...")
     cmake_configure_args = [
