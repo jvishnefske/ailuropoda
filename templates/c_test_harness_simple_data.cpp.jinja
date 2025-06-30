@@ -38,20 +38,21 @@ TEST_CASE("SimpleData encoding and decoding") {
     CborParser parser; CborValue it;
     CborError err = cbor_parser_init(buffer, encoded_len, 0, &parser, &it);
     CHECK(err == CborNoError);
-    CHECK(decode_SimpleData(&decoded_data, &it));
-    MESSAGE("SimpleData decoded successfully.");
+    if (CHECK(decode_SimpleData(&decoded_data, &it))) {
+        MESSAGE("SimpleData decoded successfully.");
 
-    MESSAGE("Decoded ID: " << decoded_data.id);
-    MESSAGE("Decoded Name: " << decoded_data.name);
-    MESSAGE("Decoded Is Active: " << (decoded_data.is_active ? "true" : "false"));
-    MESSAGE("Decoded Temperature: " << decoded_data.temperature);
-    MESSAGE("Decoded Flags: [" << (int)decoded_data.flags[0] << ", " << (int)decoded_data.flags[1] << ", " << (int)decoded_data.flags[2] << ", " << (int)decoded_data.flags[3] << "]");
+        MESSAGE("Decoded ID: " << decoded_data.id);
+        MESSAGE("Decoded Name: " << decoded_data.name);
+        MESSAGE("Decoded Is Active: " << (decoded_data.is_active ? "true" : "false"));
+        MESSAGE("Decoded Temperature: " << decoded_data.temperature);
+        MESSAGE("Decoded Flags: [" << (int)decoded_data.flags[0] << ", " << (int)decoded_data.flags[1] << ", " << (int)decoded_data.flags[2] << ", " << (int)decoded_data.flags[3] << "]");
 
-    CHECK(decoded_data.id == test_data.id);
-    CHECK(strcmp(decoded_data.name, test_data.name) == 0);
-    CHECK(decoded_data.is_active == test_data.is_active);
-    CHECK(decoded_data.temperature == doctest::Approx(test_data.temperature)); // Use Approx for floats
-    CHECK(memcmp(decoded_data.flags, test_data.flags, sizeof(test_data.flags)) == 0);
+        CHECK_EQ(decoded_data.id, test_data.id);
+        CHECK_EQ(decoded_data.name, test_data.name);
+        CHECK_EQ(decoded_data.is_active, test_data.is_active);
+        CHECK_EQ(decoded_data.temperature, doctest::Approx(test_data.temperature)); // Use Approx for floats
+        CHECK_ARRAY_EQ(decoded_data.flags, test_data.flags, sizeof(test_data.flags));
+    }
 }
 
 TEST_CASE("NestedData encoding and decoding") {
@@ -100,22 +101,23 @@ TEST_CASE("NestedData encoding and decoding") {
 
     CborParser nested_parser; CborValue nested_it;
     CborError err = cbor_parser_init(nested_buffer, nested_encoded_len, 0, &nested_parser, &nested_it);
-    CHECK(err == CborNoError);
-    CHECK(decode_NestedData(&decoded_nested, &nested_it));
-    MESSAGE("NestedData decoded successfully.");
+    CHECK_EQ(err, CborNoError);
+    if (CHECK(decode_NestedData(&decoded_nested, &nested_it))) {
+        MESSAGE("NestedData decoded successfully.");
 
-    MESSAGE("Decoded Nested ID: " << decoded_nested.inner_data.id);
-    MESSAGE("Decoded Nested Name: " << decoded_nested.inner_data.name);
-    MESSAGE("Decoded Nested Description: " << decoded_nested.description);
-    MESSAGE("Decoded Nested Value: " << decoded_nested.value);
+        MESSAGE("Decoded Nested ID: " << decoded_nested.inner_data.id);
+        MESSAGE("Decoded Nested Name: " << decoded_nested.inner_data.name);
+        MESSAGE("Decoded Nested Description: " << decoded_nested.description);
+        MESSAGE("Decoded Nested Value: " << decoded_nested.value);
 
-    CHECK(decoded_nested.inner_data.id == original_nested.inner_data.id);
-    CHECK(strcmp(decoded_nested.inner_data.name, original_nested.inner_data.name) == 0);
-    CHECK(decoded_nested.inner_data.is_active == original_nested.inner_data.is_active);
-    CHECK(decoded_nested.inner_data.temperature == doctest::Approx(original_nested.inner_data.temperature));
-    CHECK(memcmp(decoded_nested.inner_data.flags, original_nested.inner_data.flags, sizeof(original_nested.inner_data.flags)) == 0);
-    CHECK(strcmp(decoded_nested.description, original_nested.description) == 0);
-    CHECK(decoded_nested.value == original_nested.value);
+        CHECK_EQ(decoded_nested.inner_data.id, original_nested.inner_data.id);
+        CHECK_EQ(decoded_nested.inner_data.name, original_nested.inner_data.name);
+        CHECK_EQ(decoded_nested.inner_data.is_active, original_nested.inner_data.is_active);
+        CHECK_EQ(decoded_nested.inner_data.temperature, doctest::Approx(original_nested.inner_data.temperature));
+        CHECK_ARRAY_EQ(decoded_nested.inner_data.flags, original_nested.inner_data.flags, sizeof(original_nested.inner_data.flags));
+        CHECK_EQ(decoded_nested.description, original_nested.description);
+        CHECK_EQ(decoded_nested.value, original_nested.value);
+    }
 
     free(original_nested.description);
     free(decoded_nested.description);
