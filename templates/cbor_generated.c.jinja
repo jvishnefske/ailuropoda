@@ -153,21 +153,33 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
     CborError err;
     CborValue map_it;
 
-    if (cbor_value_get_type(it) != CborMapType) return false;
+    printf("DEBUG: Entering decode_{{ struct.name }}\n");
+
+    if (cbor_value_get_type(it) != CborMapType) {
+        printf("DEBUG: decode_{{ struct.name }}: Not a map type (%d)\n", cbor_value_get_type(it));
+        return false;
+    }
     err = cbor_value_enter_container(it, &map_it);
-    if (err != CborNoError) return false;
+    if (err != CborNoError) {
+        printf("DEBUG: decode_{{ struct.name }}: Error entering container: %d\n", err);
+        return false;
+    }
 
     while (!cbor_value_at_end(&map_it)) {
-        if (cbor_value_get_type(&map_it) != CborTextStringType) return false;
+        if (cbor_value_get_type(&map_it) != CborTextStringType) {
+            printf("DEBUG: decode_{{ struct.name }}: Current value is not a text string key (%d)\n", cbor_value_get_type(&map_it));
+            return false;
+        }
         
         char temp_key_buffer[64]; // Max key length for comparison
         size_t temp_key_len = sizeof(temp_key_buffer);
         // Copy the key string. The iterator map_it is NOT advanced by this call.
         err = cbor_value_copy_text_string(&map_it, temp_key_buffer, &temp_key_len, NULL);
-        if (err != CborNoError) return false;
+        if (err != CborNoError) { printf("DEBUG: decode_{{ struct.name }}: Error copying key string: %d\n", err); return false; }
         temp_key_buffer[temp_key_len] = '\0'; // Null-terminate
         char* key = temp_key_buffer;
         size_t key_len = temp_key_len;
+        printf("DEBUG: decode_{{ struct.name }}: Found key: %s\n", key);
 
         // Advance map_it past the key. Now map_it points to the value associated with 'key'.
         cbor_value_advance(&map_it); 
@@ -176,106 +188,114 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
         {% for member in struct.members %}
         if (strncmp(key, "{{ member.name }}", key_len) == 0 && strlen("{{ member.name }}") == key_len) {
             key_matched = true;
+            printf("DEBUG: decode_{{ struct.name }}: Matching member: {{ member.name }}. Value type: %d\n", cbor_value_get_type(&map_it));
             {% if member.type_category == 'struct' %}
-            // For nested structs, decode function will advance map_it past the struct value
-            if (!decode_{{ member.type_name }}(&data->{{ member.name }}, &map_it)) return false;
+            if (!decode_{{ member.type_name }}(&data->{{ member.name }}, &map_it)) { printf("DEBUG: decode_{{ struct.name }}: Failed to decode nested struct {{ member.name }}\n"); return false; }
             {% elif member.type_category == 'struct_ptr' %}
             if (cbor_value_get_type(&map_it) == CborNullType) {
                 data->{{ member.name }} = NULL;
-                cbor_value_advance(&map_it); // Advance past the NULL value
+                cbor_value_advance(&map_it);
+                printf("DEBUG: decode_{{ struct.name }}: Decoded {{ member.name }} as NULL\n");
             } else {
-                if (!data->{{ member.name }}) return false; // Buffer not allocated for pointer
-                if (!decode_{{ member.type_name }}(data->{{ member.name }}, &map_it)) return false;
+                if (!data->{{ member.name }}) { printf("DEBUG: decode_{{ struct.name }}: Null pointer for {{ member.name }} but CBOR not null\n"); return false; }
+                if (!decode_{{ member.type_name }}(data->{{ member.name }}, &map_it)) { printf("DEBUG: decode_{{ struct.name }}: Failed to decode struct pointer {{ member.name }}\n"); return false; }
             }
             {% elif member.type_category == 'char_ptr' %}
-            if (!decode_char_ptr(&data->{{ member.name }}, 256, &map_it)) return false;
+            if (!decode_char_ptr(&data->{{ member.name }}, 256, &map_it)) { printf("DEBUG: decode_{{ struct.name }}: Failed to decode char pointer {{ member.name }}\n"); return false; }
+            printf("DEBUG: decode_{{ struct.name }}: Decoded {{ member.name }}: %s\n", data->{{ member.name }});
             {% elif member.type_category == 'char_array' %}
-            if (!decode_char_array(data->{{ member.name }}, sizeof(data->{{ member.name }}), &map_it)) return false;
+            if (!decode_char_array(data->{{ member.name }}, sizeof(data->{{ member.name }}), &map_it)) { printf("DEBUG: decode_{{ struct.name }}: Failed to decode char array {{ member.name }}\n"); return false; }
+            printf("DEBUG: decode_{{ struct.name }}: Decoded {{ member.name }}: %s\n", data->{{ member.name }});
             {% elif member.type_category == 'array' or member.type_category == 'struct_array' %}
-            // Array decoding logic. The inner loop within this block will advance array_it,
-            // and cbor_value_leave_container(&map_it, &array_it) will advance map_it past the array.
-            if (cbor_value_get_type(&map_it) != CborArrayType) return false;
+            printf("DEBUG: decode_{{ struct.name }}: Decoding array member {{ member.name }}. Value type: %d\n", cbor_value_get_type(&map_it));
+            if (cbor_value_get_type(&map_it) != CborArrayType) { printf("DEBUG: decode_{{ struct.name }}: Array member {{ member.name }} is not an array type (%d)\n", cbor_value_get_type(&map_it)); return false; }
             CborValue array_it;
             err = cbor_value_enter_container(&map_it, &array_it);
-            if (err != CborNoError) return false;
+            if (err != CborNoError) { printf("DEBUG: decode_{{ struct.name }}: Error entering array container for {{ member.name }}: %d\n", err); return false; }
             size_t array_len;
             err = cbor_value_get_array_length(&array_it, &array_len);
-            if (err != CborNoError) return false;
+            if (err != CborNoError) { printf("DEBUG: decode_{{ struct.name }}: Error getting array length for {{ member.name }}: %d\n", err); return false; }
+            printf("DEBUG: decode_{{ struct.name }}: Array {{ member.name }} length: %zu\n", array_len);
 
-            // Iterate only up to the capacity of the C array
             for (size_t i = 0; i < array_len && i < {{ member.array_size }}; ++i) {
+                printf("DEBUG: decode_{{ struct.name }}: Decoding array element {{ member.name }}[%zu]. Value type: %d\n", i, cbor_value_get_type(&array_it));
                 {% if member.type_category == 'struct_array' %}
-                if (!decode_{{ member.type_name }}(&data->{{ member.name }}[i], &array_it)) return false;
+                if (!decode_{{ member.type_name }}(&data->{{ member.name }}[i], &array_it)) { printf("DEBUG: decode_{{ struct.name }}: Failed to decode struct array element {{ member.name }}[%zu]\n", i); return false; }
                 {% else %} {# primitive array #}
                 {% if member.type_name in ['int', 'long', 'short', 'char', 'int8_t', 'int16_t', 'int32_t', 'int64_t'] %}
-                if (cbor_value_get_type(&array_it) != CborIntegerType) return false;
+                if (cbor_value_get_type(&array_it) != CborIntegerType) { printf("DEBUG: decode_{{ struct.name }}: Array element {{ member.name }}[%zu] is not integer type (%d)\n", i, cbor_value_get_type(&array_it)); return false; }
                 err = cbor_value_get_int(&array_it, (int*)&data->{{ member.name }}[i]);
                 {% elif member.type_name in ['unsigned int', 'unsigned long', 'unsigned short', 'unsigned char', 'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t'] %}
-                if (cbor_value_get_type(&array_it) != CborIntegerType) return false;
-                uint64_t temp_uint_val_array; // Use a temporary uint64_t for reading
+                if (cbor_value_get_type(&array_it) != CborIntegerType) { printf("DEBUG: decode_{{ struct.name }}: Array element {{ member.name }}[%zu] is not integer type (%d)\n", i, cbor_value_get_type(&array_it)); return false; }
+                uint64_t temp_uint_val_array;
                 err = cbor_value_get_uint64(&array_it, &temp_uint_val_array);
-                if (err != CborNoError) return false;
-                data->{{ member.name }}[i] = ({{ member.type_name }})temp_uint_val_array; // Cast to the actual type
+                if (err != CborNoError) { printf("DEBUG: decode_{{ struct.name }}: Error getting uint64 for {{ member.name }}[%zu]: %d\n", i, err); return false; }
+                data->{{ member.name }}[i] = ({{ member.type_name }})temp_uint_val_array;
                 {% elif member.type_name in ['float', 'float_t'] %}
-                if (!cbor_value_is_float(&array_it) && !cbor_value_is_double(&array_it)) return false; // Check for both float and double types
+                if (!cbor_value_is_float(&array_it) && !cbor_value_is_double(&array_it)) { printf("DEBUG: decode_{{ struct.name }}: Array element {{ member.name }}[%zu] is not float/double type (%d)\n", i, cbor_value_get_type(&array_it)); return false; }
                 err = cbor_value_get_float(&array_it, &data->{{ member.name }}[i]);
                 {% elif member.type_name in ['double', 'double_t'] %}
-                if (!cbor_value_is_double(&array_it) && !cbor_value_is_float(&array_it)) return false; // Check for both double and float types
+                if (!cbor_value_is_double(&array_it) && !cbor_value_is_float(&array_it)) { printf("DEBUG: decode_{{ struct.name }}: Array element {{ member.name }}[%zu] is not float/double type (%d)\n", i, cbor_value_get_type(&array_it)); return false; }
                 err = cbor_value_get_double(&array_it, &data->{{ member.name }}[i]);
                 {% elif member.type_name in ['bool', '_Bool'] %}
-                if (cbor_value_get_type(&array_it) != CborBooleanType) return false;
+                if (cbor_value_get_type(&array_it) != CborBooleanType) { printf("DEBUG: decode_{{ struct.name }}: Array element {{ member.name }}[%zu] is not boolean type (%d)\n", i, cbor_value_get_type(&array_it)); return false; }
                 err = cbor_value_get_boolean(&array_it, &data->{{ member.name }}[i]);
                 {% else %}
                 #error "Unsupported type for decoding in array: {{ member.type_name }} {{ member.name }}"
                 {% endif %}
-                if (err != CborNoError) return false;
+                if (err != CborNoError) { printf("DEBUG: decode_{{ struct.name }}: Error decoding array element {{ member.name }}[%zu]: %d\n", i, err); return false; }
                 cbor_value_advance(&array_it);
                 {% endif %}
+                printf("DEBUG: decode_{{ struct.name }}: Decoded array element {{ member.name }}[%zu]: (value depends on type)\n", i);
             }
-            // Advance array_it past any remaining elements if array_len > {{ member.array_size }}
             while (!cbor_value_at_end(&array_it)) {
                 cbor_value_advance(&array_it);
             }
             err = cbor_value_leave_container(&map_it, &array_it);
-            if (err != CborNoError) return false;
+            if (err != CborNoError) { printf("DEBUG: decode_{{ struct.name }}: Error leaving array container for {{ member.name }}: %d\n", err); return false; }
             {% elif member.type_category == 'primitive' %}
-            // Primitive decoding logic will advance map_it past the primitive value.
             {% if member.type_name in ['int', 'long', 'short', 'char', 'int8_t', 'int16_t', 'int32_t', 'int64_t'] %}
-            if (cbor_value_get_type(&map_it) != CborIntegerType) return false;
+            if (cbor_value_get_type(&map_it) != CborIntegerType) { printf("DEBUG: decode_{{ struct.name }}: Primitive {{ member.name }} is not integer type (%d)\n", cbor_value_get_type(&map_it)); return false; }
             err = cbor_value_get_int(&map_it, (int*)&data->{{ member.name }});
             {% elif member.type_name in ['unsigned int', 'unsigned long', 'unsigned short', 'unsigned char', 'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t'] %}
-            if (cbor_value_get_type(&map_it) != CborIntegerType) return false;
-            uint64_t temp_uint_val; // Use a temporary uint64_t for reading
+            if (cbor_value_get_type(&map_it) != CborIntegerType) { printf("DEBUG: decode_{{ struct.name }}: Primitive {{ member.name }} is not integer type (%d)\n", cbor_value_get_type(&map_it)); return false; }
+            uint64_t temp_uint_val;
             err = cbor_value_get_uint64(&map_it, &temp_uint_val);
-            if (err != CborNoError) return false;
-            data->{{ member.name }} = ({{ member.type_name }})temp_uint_val; // Cast to the actual type
+            if (err != CborNoError) { printf("DEBUG: decode_{{ struct.name }}: Error getting uint64 for {{ member.name }}: %d\n", err); return false; }
+            data->{{ member.name }} = ({{ member.type_name }})temp_uint_val;
             {% elif member.type_name in ['float', 'float_t'] %}
-            if (!cbor_value_is_float(&map_it) && !cbor_value_is_double(&map_it)) return false; // Check for both float and double types
+            if (!cbor_value_is_float(&map_it) && !cbor_value_is_double(&map_it)) { printf("DEBUG: decode_{{ struct.name }}: Primitive {{ member.name }} is not float/double type (%d)\n", cbor_value_get_type(&map_it)); return false; }
             err = cbor_value_get_float(&map_it, &data->{{ member.name }});
             {% elif member.type_name in ['double', 'double_t'] %}
-            if (!cbor_value_is_double(&map_it) && !cbor_value_is_float(&map_it)) return false; // Check for both double and float types
+            if (!cbor_value_is_double(&map_it) && !cbor_value_is_float(&map_it)) { printf("DEBUG: decode_{{ struct.name }}: Primitive {{ member.name }} is not float/double type (%d)\n", cbor_value_get_type(&map_it)); return false; }
             err = cbor_value_get_double(&map_it, &data->{{ member.name }});
             {% elif member.type_name in ['bool', '_Bool'] %}
-            if (cbor_value_get_type(&map_it) != CborBooleanType) return false;
+            if (cbor_value_get_type(&map_it) != CborBooleanType) { printf("DEBUG: decode_{{ struct.name }}: Primitive {{ member.name }} is not boolean type (%d)\n", cbor_value_get_type(&map_it)); return false; }
             err = cbor_value_get_boolean(&map_it, &data->{{ member.name }});
             {% else %}
             #error "Unsupported primitive type for decoding: {{ member.type_name }} {{ member.name }}"
             {% endif %}
-            if (err != CborNoError) return false;
-            cbor_value_advance(&map_it); // Advance past the primitive value
+            if (err != CborNoError) { printf("DEBUG: decode_{{ struct.name }}: Error decoding primitive {{ member.name }}: %d\n", err); return false; }
+            cbor_value_advance(&map_it);
+            printf("DEBUG: decode_{{ struct.name }}: Decoded primitive {{ member.name }}: (value depends on type)\n");
             {% else %}
             #error "Unsupported type category for decoding: {{ member.type_category }} {{ member.name }}"
             {% endif %}
-            break; // Found and processed the key, break from member loop
+            break;
         }
         {% endfor %}
         if (!key_matched) {
-            // Unknown key: map_it is currently pointing to the value. Advance past it.
+            printf("DEBUG: decode_{{ struct.name }}: Unknown key '%s'. Advancing past value...\n", key);
             cbor_value_advance(&map_it);
         }
     }
 
     err = cbor_value_leave_container(it, &map_it);
+    if (err != CborNoError) {
+        printf("DEBUG: decode_{{ struct.name }}: Error leaving container: %d\n", err);
+        return false;
+    }
+    printf("DEBUG: Exiting decode_{{ struct.name }}\n");
     return err == CborNoError;
 }
 {% endfor %}
