@@ -2,55 +2,88 @@
 cmake_minimum_required(VERSION 3.15)
 project(AiluropodaIntegrationTests C CXX)
 
-# Include the dependency management script from the project root.
-# This assumes dependency.cmake is in the parent directory or a known path.
-# We expect the main project's CMakeLists.txt to handle FetchContent for shared dependencies.
-# However, for standalone testing or if this is run as a sub-project without parent setup,
-# we can call setup_dependencies directly here.
-# For now, let's assume `setup_dependencies` is available, possibly through a parent.
-# If running this CMakeLists.txt directly for testing, you'd call setup_dependencies() here.
-# If add_subdirectory'd, the parent might already have set them up.
+# Define paths relative to the current test directory
+set(INTEGRATION_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(PROJECT_ROOT ${INTEGRATION_TEST_DIR}/../..)
+set(SRC_DIR ${PROJECT_ROOT}/src)
+set(TEMPLATES_DIR ${PROJECT_ROOT}/templates)
+set(HEADER_FILE ${INTEGRATION_TEST_DIR}/simple_data.h)
 
-# For integration tests, we need the generated code, our test harness, and tinycbor/doctest.
+# Define output directory for generated code within the current build tree
+set(GENERATED_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_code")
 
-# The generated code will be located in a path passed by the test script (e.g., GENERATED_CODE_DIR).
-# We add it as a subdirectory to get its targets.
-if(NOT DEFINED GENERATED_CODE_DIR)
-    message(FATAL_ERROR "GENERATED_CODE_DIR must be defined for integration tests.")
+# Ensure the output directory exists for the Python script
+file(MAKE_DIRECTORY ${GENERATED_OUTPUT_DIR})
+
+# Define the paths for the generated files
+set(GENERATED_C_FILE "${GENERATED_OUTPUT_DIR}/cbor_generated.c")
+set(GENERATED_H_FILE "${GENERATED_OUTPUT_DIR}/cbor_generated.h")
+
+# Find Python interpreter (from main CMakeLists.txt or system PATH)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+# Find C preprocessor (cpp) executable
+find_program(CPP_EXECUTABLE NAMES cpp PATHS /usr/bin /bin /opt/local/bin NO_DEFAULT_PATH)
+if(NOT CPP_EXECUTABLE)
+    message(WARNING "Could not find 'cpp' preprocessor. Using fallback 'cpp'.")
+    set(CPP_EXECUTABLE "cpp")
 endif()
 
-# Add the generated CBOR library as a subdirectory.
-# Its CMakeLists.txt handles finding TinyCBOR and generating its library.
-add_subdirectory(${GENERATED_CODE_DIR} generated_cbor_build)
+# Define common cpp_args. In a real project, these might come from user/env.
+# Add -D__STDC_WANT_LIB_EXT1__ which is needed by pycparser for some system headers.
+set(CPP_ARGS -E -D__STDC_WANT_LIB_EXT1__)
 
-# Ensure dependencies are available for the test executable
-# Call setup_dependencies here to ensure they are available even if not run from root
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../dependency.cmake")
-    include("${CMAKE_CURRENT_SOURCE_DIR}/../../dependency.cmake")
-    setup_dependencies()
-else()
-    message(WARNING "dependency.cmake not found. Assuming TinyCBOR and Doctest are provided externally.")
-    find_package(TinyCBOR CONFIG REQUIRED)
-    find_package(doctest CONFIG REQUIRED) # Doctest often provides a config file as well
-endif()
+# Construct the full Python command to run the code generator as a module
+# Set PYTHONPATH to include the 'src' directory so 'ailuropoda' can be found.
+set(PYTHON_COMMAND_PREFIX "${Python3_EXECUTABLE} -m ailuropoda")
+set(PYTHON_ENV_VAR "PYTHONPATH=${SRC_DIR}")
 
-# Add the test executable
-add_executable(simple_data_test_harness simple_data_test_harness.cpp)
-
-# Link the test executable against the generated library and other dependencies
-target_link_libraries(simple_data_test_harness PRIVATE
-    cbor_generated # The library target name defined in generated_cbor_build/CMakeLists.txt
-    TinyCBOR::tinycbor # Link against the TinyCBOR target (from FetchContent or find_package)
-    doctest::doctest # Link against the doctest target (from FetchContent or find_package)
+# Add custom command to run the code generator
+add_custom_command(
+    OUTPUT
+        ${GENERATED_C_FILE}
+        ${GENERATED_H_FILE}
+    COMMAND
+        ${CMAKE_COMMAND} -E env ${PYTHON_ENV_VAR} ${PYTHON_COMMAND_PREFIX}
+        ${HEADER_FILE}
+        --output-dir ${GENERATED_OUTPUT_DIR}
+        --cpp-path ${CPP_EXECUTABLE}
+        --templates-dir ${TEMPLATES_DIR}
+        --cpp-args ${CPP_ARGS}
+    DEPENDS
+        ${HEADER_FILE}
+        ${SRC_DIR}/ailuropoda/cbor_codegen.py # Dependency on the generator script
+        ${TEMPLATES_DIR}/cbor_generated.c.jinja # Dependency on templates used by generator
+        ${TEMPLATES_DIR}/cbor_generated.h.jinja
+        ${TEMPLATES_DIR}/CMakeLists.txt.jinja # Dependency on CMakeLists template
+        ${PROJECT_ROOT}/dependency.cmake # Dependency on the dependency setup script
+    COMMENT "Generating CBOR code for ${HEADER_FILE} in integration test"
+    VERBATIM
 )
 
-# Add include directories for the test harness
-target_include_directories(simple_data_test_harness PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR} # For simple_data_test_harness.cpp itself
-    ${GENERATED_CODE_DIR}       # For cbor_generated.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/../.. # For simple_data.h (original input header)
+# Define the integration test executable
+set(TEST_HARNESS_SRC ${INTEGRATION_TEST_DIR}/simple_data_test_harness.cpp)
+set(TEST_EXECUTABLE_NAME "ailuropoda_simple_data_integration_test")
+
+add_executable(${TEST_EXECUTABLE_NAME}
+    ${TEST_HARNESS_SRC}
+    ${GENERATED_C_FILE} # Include the generated C file as a source for this executable
+)
+
+# Set include directories for the test executable
+target_include_directories(${TEST_EXECUTABLE_NAME} PRIVATE
+    $<BUILD_INTERFACE:${GENERATED_OUTPUT_DIR}> # For cbor_generated.h
+    $<BUILD_INTERFACE:${INTEGRATION_TEST_DIR}> # For simple_data.h
+    $<BUILD_INTERFACE:${tinycbor_SOURCE_DIR}>  # For tinycbor headers (provided by root setup_dependencies)
+    $<BUILD_INTERFACE:${doctest_proj_SOURCE_DIR}> # For doctest headers (provided by root setup_dependencies)
+)
+
+# Link the test executable against TinyCBOR and Doctest
+target_link_libraries(${TEST_EXECUTABLE_NAME} PRIVATE
+    TinyCBOR::tinycbor # Provided by FetchContent in root dependency.cmake
+    doctest::doctest   # Provided by FetchContent in root dependency.cmake
 )
 
 # Add the test to CTest
-add_test(NAME AiluropodaSimpleDataIntegrationTest COMMAND simple_data_test_harness)
-message(STATUS "Integration test 'AiluropodaSimpleDataIntegrationTest' configured.")
+add_test(NAME ${TEST_EXECUTABLE_NAME} COMMAND ${TEST_EXECUTABLE_NAME})
+MESSAGE(STATUS "Added CTest test: ${TEST_EXECUTABLE_NAME}")
