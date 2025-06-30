@@ -84,6 +84,9 @@ target_link_libraries(${TEST_EXECUTABLE_NAME} PRIVATE
     doctest::doctest   # Provided by FetchContent in root dependency.cmake
 )
 
+
+include(${PROJECT_ROOT}/dependency.cmake REQUIRED)
+setup_dependencies()
 # Add the test to CTest
 add_test(NAME ${TEST_EXECUTABLE_NAME} COMMAND ${TEST_EXECUTABLE_NAME})
 MESSAGE(STATUS "Added CTest test: ${TEST_EXECUTABLE_NAME}")
