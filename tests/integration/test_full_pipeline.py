@@ -92,46 +92,33 @@ def tinycbor_install_path(tmp_path_factory):
     else:
         print(f"\nUsing persistent TinyCBOR cache from {persistent_install_path}")
 
-    # --- Handle doctest ---
-    # Download doctest if not already present in the persistent cache
-    if not persistent_doctest_include_dir.exists() or not (persistent_doctest_include_dir / "doctest.h").exists():
-        print(f"Downloading doctest to {persistent_doctest_include_dir}...")
-        # Use a temporary directory for downloading doctest
-        doctest_temp_dir = tmp_path_factory.mktemp("doctest_temp")
-        try:
-            subprocess.run(
-                [
-                    "curl",
-                    "-L",
-                    "https://github.com/doctest/doctest/releases/latest/download/doctest.h",
-                    "-o",
-                    str(doctest_temp_dir / "doctest.h"),
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            persistent_doctest_include_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy(
-                doctest_temp_dir / "doctest.h",
-                persistent_doctest_include_dir / "doctest.h",
-            )
-            print("doctest.h downloaded and cached.")
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to download doctest: {e.stderr}")
-            pytest.fail("Failed to download doctest")
-        finally:
-            # Clean up the temporary download directory
-            if doctest_temp_dir.exists():
-                shutil.rmtree(doctest_temp_dir)
-    else:
-        print(f"Using persistent doctest cache from {persistent_doctest_include_dir}")
-
     yield persistent_install_path
 
 
+@pytest.fixture(scope="module")
+def doctest_git_url(tmp_path_factory):
+    """
+    Fixture to clone the doctest repository into a temporary directory.
+    This path will be used by CMake to find doctest.
+    """
+    doctest_repo_path = tmp_path_factory.mktemp("doctest_repo")
+    print(f"\nCloning doctest into {doctest_repo_path}...")
+    try:
+        subprocess.run(
+            ["git", "clone", "https://github.com/doctest/doctest.git", str(doctest_repo_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        print(f"Doctest cloned to {doctest_repo_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to clone doctest:\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}")
+        pytest.fail("Failed to clone doctest")
+    yield doctest_repo_path
+
+
 @pytest.fixture
-def setup_test_environment(tmp_path, tinycbor_install_path):
+def setup_test_environment(tmp_path, tinycbor_install_path, doctest_git_url):
     """
     Sets up a temporary build directory for the example CMake project.
     """
@@ -154,7 +141,8 @@ def test_full_cbor_pipeline(setup_test_environment):
         "cmake",
         str(example_project_source_dir),  # Source directory is the integration test directory
         "-B.",  # Binary directory is the current working directory (main_build_dir)
-        f"-DCMAKE_PREFIX_PATH={tinycbor_install_path}",  # Point CMake to TinyCBOR and Doctest install
+        f"-DCMAKE_PREFIX_PATH={tinycbor_install_path}",  # Point CMake to TinyCBOR install
+        f"-DDOCTEST_GIT_URL={doctest_git_url}",  # Point CMake to the cloned Doctest repository
         # No -DGENERATED_CODE_DIR needed; the example CMakeLists.txt defines its own generated output.
         "-DCMAKE_BUILD_TYPE=Release",
     ]
