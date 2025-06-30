@@ -39,7 +39,8 @@ TEST_CASE("SimpleData encoding and decoding") {
     CborError err = cbor_parser_init(buffer, encoded_len, 0, &parser, &it);
     CHECK_EQ(err, CborNoError);
     bool simple_data_decoded_ok = decode_SimpleData(&decoded_data, &it);
-    if (CHECK(simple_data_decoded_ok)) {
+    CHECK(simple_data_decoded_ok);
+    if (simple_data_decoded_ok) {
         MESSAGE("SimpleData decoded successfully.");
 
         MESSAGE("Decoded ID: " << decoded_data.id);
@@ -106,7 +107,8 @@ TEST_CASE("NestedData encoding and decoding") {
     CborError err = cbor_parser_init(nested_buffer, nested_encoded_len, 0, &nested_parser, &nested_it);
     CHECK_EQ(err, CborNoError);
     bool nested_data_decoded_ok = decode_NestedData(&decoded_nested, &nested_it);
-    if (CHECK(nested_data_decoded_ok)) {
+    CHECK(nested_data_decoded_ok);
+    if (nested_data_decoded_ok) {
         MESSAGE("NestedData decoded successfully.");
 
         MESSAGE("Decoded Nested ID: " << decoded_nested.inner_data.id);
