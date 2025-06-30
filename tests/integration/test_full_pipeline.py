@@ -101,20 +101,9 @@ def doctest_git_url(tmp_path_factory):
     Fixture to clone the doctest repository into a temporary directory.
     This path will be used by CMake to find doctest.
     """
-    doctest_repo_path = tmp_path_factory.mktemp("doctest_repo")
-    print(f"\nCloning doctest into {doctest_repo_path}...")
-    try:
-        subprocess.run(
-            ["git", "clone", "https://github.com/doctest/doctest.git", str(doctest_repo_path)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        print(f"Doctest cloned to {doctest_repo_path}")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to clone doctest:\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}")
-        pytest.fail("Failed to clone doctest")
-    yield doctest_repo_path
+    doctest_repo_url = "https://github.com/doctest/doctest.git"
+    print(f"\nDoctest Git URL set to: {doctest_repo_url}")
+    yield doctest_repo_url
 
 
 @pytest.fixture
