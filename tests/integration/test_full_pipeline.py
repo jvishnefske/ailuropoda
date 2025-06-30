@@ -174,9 +174,9 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
     # 2. Render the C++ test harness file from its template
     print(f"Rendering C++ test harness from template...")
     harness_template = env.get_template('c_test_harness_simple_data.cpp.jinja') # Correct template name
-    # Use Path.relative_to with walk_up=True to handle paths outside the output_dir
+    # Use the absolute path as `relative_to` with `walk_up` is not universally available.
     rendered_harness = harness_template.render(
-        input_header_path=HEADER_FILE.relative_to(output_dir, walk_up=True)
+        input_header_path=HEADER_FILE.absolute()
     )
     (output_dir / test_harness_cpp_file_name).write_text(rendered_harness)
     print(f"Generated C++ test harness: {output_dir / test_harness_cpp_file_name}")
