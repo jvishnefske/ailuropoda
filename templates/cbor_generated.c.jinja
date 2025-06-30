@@ -58,7 +58,7 @@ bool encode_{{ struct.name }}(const struct {{ struct.name }}* data, CborEncoder*
     if (err != CborNoError) return false;
 
     {% if member.type_category == 'struct' %}
-    if (!encode_{{ member.name }}(&data->{{ member.name }}, &map_encoder)) return false;
+    if (!encode_{{ member.type_name }}(&data->{{ member.name }}, &map_encoder)) return false;
     {% elif member.type_category == 'struct_ptr' %}
     if (data->{{ member.name }}) {
         if (!encode_{{ member.type_name }}(data->{{ member.name }}, &map_encoder)) return false;
@@ -148,7 +148,7 @@ bool decode_{{ struct.name }}(struct {{ struct.name }}* data, CborValue* it) {
         {% for member in struct.members %}
         if (strncmp(key, "{{ member.name }}", key_len) == 0 && strlen("{{ member.name }}") == key_len) {
             {% if member.type_category == 'struct' %}
-            if (!decode_{{ member.name }}(&data->{{ member.name }}, &map_it)) return false;
+            if (!decode_{{ member.type_name }}(&data->{{ member.name }}, &map_it)) return false;
             {% elif member.type_category == 'struct_ptr' %}
             if (cbor_value_get_type(&map_it) == CborNullType) {
                 data->{{ member.name }} = NULL;
