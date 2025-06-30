@@ -8,6 +8,15 @@
 // Include the original header file that defines the structs
 #include "{{ original_header_path }}"
 
+// Helper to encode a text string (char array or char*)
+static bool encode_text_string(const char* str, CborEncoder* encoder);
+
+// Helper to decode a text string into a fixed-size char array
+static bool decode_char_array(char* buffer, size_t buffer_size, CborValue* it);
+
+// Helper to decode a text string into a char* (assumes *ptr is pre-allocated with max_len bytes)
+static bool decode_char_ptr(char** ptr, size_t max_len, CborValue* it);
+
 // Encode/Decode function declarations
 #ifdef __cplusplus
 extern "C" {

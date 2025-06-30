@@ -3,16 +3,16 @@ from pathlib import Path
 import subprocess
 import shutil
 import sys
-import os # Import os for environment variables
+import os  # Import os for environment variables
 from jinja2 import Environment, FileSystemLoader
 
 # Define paths relative to the current test file
 TEST_DIR = Path(__file__).parent
 PROJECT_ROOT = TEST_DIR.parent.parent
-SRC_DIR = PROJECT_ROOT / 'src'
-TEMPLATES_DIR = PROJECT_ROOT / 'templates'
+SRC_DIR = PROJECT_ROOT / "src"
+TEMPLATES_DIR = PROJECT_ROOT / "templates"
 
-HEADER_FILE = TEST_DIR / 'simple_data.h'
+HEADER_FILE = TEST_DIR / "simple_data.h"
 
 # Setup Jinja2 environment for templates
 env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), trim_blocks=True, lstrip_blocks=True)
@@ -20,15 +20,16 @@ env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), trim_blocks=True, lstr
 # Import cpp_info fixture from test_cbor_codegen for C preprocessor details
 from tests.test_cbor_codegen import cpp_info
 
-@pytest.fixture(scope="module") # Changed scope to module to build TinyCBOR once
+
+@pytest.fixture(scope="module")  # Changed scope to module to build TinyCBOR once
 def tinycbor_install_path(tmp_path_factory):
     """
     Fixture to clone, build, and install TinyCBOR and download doctest into a persistent directory.
     This path will be used by CMake to find TinyCBOR and doctest.
     """
     # Define persistent paths for source and installation
-    persistent_install_path = PROJECT_ROOT / 'build' / 'persistent_deps_install'
-    persistent_tinycbor_repo_path = PROJECT_ROOT / 'build' / 'persistent_deps_src' / 'tinycbor'
+    persistent_install_path = PROJECT_ROOT / "build" / "persistent_deps_install"
+    persistent_tinycbor_repo_path = PROJECT_ROOT / "build" / "persistent_deps_src" / "tinycbor"
     persistent_doctest_include_dir = persistent_install_path / "include" / "doctest"
 
     # Ensure parent directories for persistent caches exist
@@ -37,11 +38,14 @@ def tinycbor_install_path(tmp_path_factory):
 
     # --- Handle TinyCBOR ---
     # Check if TinyCBOR is already installed in the persistent location
-    tinycbor_installed_check = (persistent_install_path / "include" / "tinycbor").exists() and \
-                               (persistent_install_path / "lib").exists()
+    tinycbor_installed_check = (persistent_install_path / "include" / "tinycbor").exists() and (
+        persistent_install_path / "lib"
+    ).exists()
 
     if not tinycbor_installed_check:
-        print(f"\nPersistent TinyCBOR cache not found or incomplete. Attempting to build and install into {persistent_install_path}...")
+        print(
+            f"\nPersistent TinyCBOR cache not found or incomplete. Attempting to build and install into {persistent_install_path}..."
+        )
 
         # 1. Ensure TinyCBOR source is available (clone if not present)
         if not (persistent_tinycbor_repo_path / ".git").exists():
@@ -50,8 +54,14 @@ def tinycbor_install_path(tmp_path_factory):
                 # Ensure parent directory for the repo exists before cloning
                 persistent_tinycbor_repo_path.parent.mkdir(parents=True, exist_ok=True)
                 subprocess.run(
-                    ["git", "clone", "https://github.com/intel/tinycbor.git", str(persistent_tinycbor_repo_path)],
-                    check=True, capture_output=True
+                    [
+                        "git",
+                        "clone",
+                        "https://github.com/intel/tinycbor.git",
+                        str(persistent_tinycbor_repo_path),
+                    ],
+                    check=True,
+                    capture_output=True,
                 )
             except subprocess.CalledProcessError as e:
                 print(f"Failed to clone TinyCBOR:\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}")
@@ -72,17 +82,24 @@ def tinycbor_install_path(tmp_path_factory):
 
         try:
             subprocess.run(
-                ["cmake", str(persistent_tinycbor_repo_path), # Source is the persistent repo
-                 "-DCMAKE_INSTALL_PREFIX=" + str(persistent_install_path),
-                 "-DCBOR_CONVERTER=OFF",
-                 "-DCMAKE_BUILD_TYPE=Release"],
-                cwd=tinycbor_build_path, # Build in the temporary build dir
-                check=True, capture_output=True, text=True
+                [
+                    "cmake",
+                    str(persistent_tinycbor_repo_path),  # Source is the persistent repo
+                    "-DCMAKE_INSTALL_PREFIX=" + str(persistent_install_path),
+                    "-DCBOR_CONVERTER=OFF",
+                    "-DCMAKE_BUILD_TYPE=Release",
+                ],
+                cwd=tinycbor_build_path,  # Build in the temporary build dir
+                check=True,
+                capture_output=True,
+                text=True,
             )
             subprocess.run(
                 ["cmake", "--build", ".", "--target", "install"],
                 cwd=tinycbor_build_path,
-                check=True, capture_output=True, text=True
+                check=True,
+                capture_output=True,
+                text=True,
             )
             print(f"TinyCBOR installed to persistent cache at {persistent_install_path}")
         except subprocess.CalledProcessError as e:
@@ -99,11 +116,22 @@ def tinycbor_install_path(tmp_path_factory):
         doctest_temp_dir = tmp_path_factory.mktemp("doctest_temp")
         try:
             subprocess.run(
-                ["curl", "-L", "https://github.com/doctest/doctest/releases/latest/download/doctest.h", "-o", str(doctest_temp_dir / "doctest.h")],
-                check=True, capture_output=True, text=True
+                [
+                    "curl",
+                    "-L",
+                    "https://github.com/doctest/doctest/releases/latest/download/doctest.h",
+                    "-o",
+                    str(doctest_temp_dir / "doctest.h"),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
             )
             persistent_doctest_include_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy(doctest_temp_dir / "doctest.h", persistent_doctest_include_dir / "doctest.h")
+            shutil.copy(
+                doctest_temp_dir / "doctest.h",
+                persistent_doctest_include_dir / "doctest.h",
+            )
             print("doctest.h downloaded and cached.")
         except subprocess.CalledProcessError as e:
             print(f"Failed to download doctest: {e.stderr}")
@@ -117,6 +145,7 @@ def tinycbor_install_path(tmp_path_factory):
 
     yield persistent_install_path
 
+
 @pytest.fixture
 def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
     """
@@ -129,8 +158,8 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
 
     # Get cpp_path and cpp_args from the fixture
     # The cpp_info fixture returns a dictionary, so unpack it correctly
-    cpp_path = cpp_info['cpp_path']
-    cpp_args = cpp_info['cpp_args']
+    cpp_path = cpp_info["cpp_path"]
+    cpp_args = cpp_info["cpp_args"]
 
     generated_c_file_name = "cbor_generated.c"
     generated_h_file_name = "cbor_generated.h"
@@ -142,26 +171,30 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
     # Set up environment for the subprocess to find the 'ailuropoda' package
     env_for_subprocess = os.environ.copy()
     # Add SRC_DIR to PYTHONPATH so 'ailuropoda' can be imported as a module
-    env_for_subprocess['PYTHONPATH'] = str(SRC_DIR) + os.pathsep + env_for_subprocess.get('PYTHONPATH', '')
+    env_for_subprocess["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env_for_subprocess.get("PYTHONPATH", "")
 
     # 1. Run the code generator script as a subprocess
     print(f"Running src/ailuropoda/cbor_codegen.py for {HEADER_FILE} into {output_dir}")
     try:
         subprocess.run(
             [
-                sys.executable, # Use the current Python interpreter
-                "-m", "ailuropoda", # Run 'ailuropoda' as a module
+                sys.executable,  # Use the current Python interpreter
+                "-m",
+                "ailuropoda",  # Run 'ailuropoda' as a module
                 str(HEADER_FILE),
-                "--output-dir", str(output_dir),
-                "--cpp-path", cpp_path, # Pass cpp_path from fixture
-                "--cpp-args", *cpp_args, # Pass cpp_args from fixture
+                "--output-dir",
+                str(output_dir),
+                "--cpp-path",
+                cpp_path,  # Pass cpp_path from fixture
+                "--cpp-args",
+                *cpp_args,  # Pass cpp_args from fixture
                 # Pass TinyCBOR include path to pycparser for parsing
-                "-I" + str(tinycbor_install_path / "include")
+                "-I" + str(tinycbor_install_path / "include"),
             ],
             check=True,
             capture_output=True,
             text=True,
-            env=env_for_subprocess # Pass the modified environment
+            env=env_for_subprocess,  # Pass the modified environment
         )
     except subprocess.CalledProcessError as e:
         print(f"Code generation failed:\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}")
@@ -173,22 +206,20 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
 
     # 2. Render the C++ test harness file from its template
     print(f"Rendering C++ test harness from template...")
-    harness_template = env.get_template('c_test_harness_simple_data.cpp.jinja') # Correct template name
-    # Use Path.relative_to with walk_up=True to handle paths outside the output_dir
-    rendered_harness = harness_template.render(
-        input_header_path=HEADER_FILE.relative_to(output_dir, walk_up=True)
-    )
+    harness_template = env.get_template("c_test_harness_simple_data.cpp.jinja")  # Correct template name
+    # Use the absolute path as `relative_to` with `walk_up` is not universally available.
+    rendered_harness = harness_template.render(input_header_path=HEADER_FILE.absolute())
     (output_dir / test_harness_cpp_file_name).write_text(rendered_harness)
     print(f"Generated C++ test harness: {output_dir / test_harness_cpp_file_name}")
 
     # 3. Re-render CMakeLists.txt to include the test harness executable
     print(f"Re-rendering CMakeLists.txt to include test harness...")
-    cmake_template = env.get_template('CMakeLists.txt.jinja')
+    cmake_template = env.get_template("CMakeLists.txt.jinja")
     rendered_cmake = cmake_template.render(
         generated_library_name=generated_library_name,
         generated_c_file_name=generated_c_file_name,
-        test_harness_c_file_name=test_harness_cpp_file_name, # Pass the .cpp file name
-        test_harness_executable_name=test_executable_name
+        test_harness_c_file_name=test_harness_cpp_file_name,  # Pass the .cpp file name
+        test_harness_executable_name=test_executable_name,
     )
     (output_dir / generated_cmake_file_name).write_text(rendered_cmake)
 
@@ -198,6 +229,7 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
 
     yield output_dir, main_build_dir, test_executable_name, tinycbor_install_path
 
+
 def test_full_cbor_pipeline(setup_test_environment):
     output_dir, main_build_dir, test_executable_name, tinycbor_install_path = setup_test_environment
 
@@ -205,13 +237,19 @@ def test_full_cbor_pipeline(setup_test_environment):
     print(f"Configuring main CMake project in {main_build_dir}...")
     cmake_configure_args = [
         "cmake",
-        str(PROJECT_ROOT), # Source directory is project root
-        "-B.", # Binary directory is the current working directory (main_build_dir)
-        f"-DCMAKE_PREFIX_PATH={tinycbor_install_path}", # Point CMake to TinyCBOR and Doctest install
-        f"-DGENERATED_CODE_DIR={output_dir}", # Pass the path to the generated code
-        "-DCMAKE_BUILD_TYPE=Release"
+        str(PROJECT_ROOT),  # Source directory is project root
+        "-B.",  # Binary directory is the current working directory (main_build_dir)
+        f"-DCMAKE_PREFIX_PATH={tinycbor_install_path}",  # Point CMake to TinyCBOR and Doctest install
+        f"-DGENERATED_CODE_DIR={output_dir}",  # Pass the path to the generated code
+        "-DCMAKE_BUILD_TYPE=Release",
     ]
-    result = subprocess.run(cmake_configure_args, cwd=main_build_dir, check=False, capture_output=True, text=True)
+    result = subprocess.run(
+        cmake_configure_args,
+        cwd=main_build_dir,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
     if result.returncode != 0:
         print(f"CMake configure failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
         pytest.fail("CMake configure failed")
@@ -220,10 +258,10 @@ def test_full_cbor_pipeline(setup_test_environment):
     # 5. Build the project
     result = subprocess.run(
         ["cmake", "--build", "."],
-        cwd=main_build_dir, # Build from the main build directory
+        cwd=main_build_dir,  # Build from the main build directory
         check=False,
         capture_output=True,
-        text=True
+        text=True,
     )
     if result.returncode != 0:
         print(f"CMake build failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
@@ -235,25 +273,20 @@ def test_full_cbor_pipeline(setup_test_environment):
     if not test_executable_path.exists():
         # On some systems (e.g., Windows), executables might have .exe extension
         test_executable_path = main_build_dir / "generated_cbor_build" / (test_executable_name + ".exe")
-    
+
     if not test_executable_path.exists():
         pytest.fail(f"Test executable not found at {test_executable_path} after build.")
 
     print(f"Running test executable: {test_executable_path}")
-    result = subprocess.run(
-        [str(test_executable_path)],
-        check=False,
-        capture_output=True,
-        text=True
-    )
+    result = subprocess.run([str(test_executable_path)], check=False, capture_output=True, text=True)
 
     # Assert that the doctest C++ test harness exited successfully (return code 0)
     if result.returncode != 0:
         print(f"Doctest C++ test harness failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
         pytest.fail(f"Doctest C++ test harness exited with non-zero status {result.returncode}")
-    
+
     print(f"Doctest C++ test harness output:\n{result.stdout}")
     # Doctest output format: [doctest] test cases: X | Y passed | Z failed
     assert "[doctest] test cases:" in result.stdout
-    assert "| 0 failed" in result.stdout # Ensure no tests failed
+    assert "| 0 failed" in result.stdout  # Ensure no tests failed
     print("Full pipeline test completed successfully.")

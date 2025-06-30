@@ -113,21 +113,7 @@ uv sync --dev
 `Ailuropoda` provides a command-line interface `ailuropoda` (or `ailuropoda.cbor_codegen` if running via `uv run` directly from source).
 
 1.  **Run the code generator**:
-    ```bash
-    # Choose your preferred tool: uvx, pipx, pipenv, or uv run (if developing locally)
 
-    # Example: Using pipx (recommended if installed globally via pipx install ailuropoda)
-    pipx run ailuropoda <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
-
-    # Example: Using uvx (for ad-hoc execution without global install)
-    uvx ailuropoda <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
-
-    # Example: Using pipenv (if installed in a pipenv project)
-    pipenv run ailuropoda <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
-
-    # Example: If running from source with uv virtual environment
-    uv run ailuropoda <your_header_file.h> --output-dir <output_directory> [--generate-json-helpers]
-    ```
     Concrete Example:
     ```bash
     # Generate CBOR code for tests/my_data.h into the 'generated_cbor' directory
