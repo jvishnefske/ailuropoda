@@ -3,12 +3,15 @@
 
 include(FetchContent)
 
+
 # Function to set up all dependencies
 function(setup_dependencies)
+    set(TINYCBOR_GIT_URL https://github.com/intel/tinycbor.git CACHE STRING "dependency url or local git location")
+    set(DOCTEST_GIT_URL https://github.com/doctest/doctest.git CACHE STRING "dependency url or local git location")
     # Configure TinyCBOR via FetchContent
     FetchContent_Declare(
         tinycbor_proj
-        GIT_REPOSITORY https://github.com/intel/tinycbor.git
+        GIT_REPOSITORY ${TINYCBOR_GIT_URL}
         GIT_TAG        v0.6.1 # Use a specific tag for stability
         SOURCE_DIR     "${CMAKE_BINARY_DIR}/_deps/tinycbor-src"
         BINARY_DIR     "${CMAKE_BINARY_DIR}/_deps/tinycbor-build"
@@ -33,7 +36,7 @@ function(setup_dependencies)
     # Configure Doctest via FetchContent (single-header)
     FetchContent_Declare(
         doctest_proj
-        GIT_REPOSITORY https://github.com/doctest/doctest.git
+        GIT_REPOSITORY ${DOCTEST_GIT_URL}
         GIT_TAG        v2.4.11 # Use a specific tag for stability
         SOURCE_DIR     "${CMAKE_BINARY_DIR}/_deps/doctest-src"
         BINARY_DIR     "${CMAKE_BINARY_DIR}/_deps/doctest-build"
@@ -41,7 +44,7 @@ function(setup_dependencies)
         BUILD_COMMAND ""
         INSTALL_COMMAND ""
     )
-    FetchContent_MakeAvailable(doctest_proj)
+    FetchContent_MakeAvailable(doctest_proj tinycbor_proj)
 
     # Doctest is a header-only library, so we just need its include directory.
     # Its CMakeLists.txt automatically defines a target `doctest`.
