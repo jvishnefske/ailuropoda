@@ -17,8 +17,6 @@ from ailuropoda.cbor_codegen import (
     get_type_info,
     generate_cbor_code,
 )
-import os
-import tempfile
 
 
 @pytest.fixture(scope="module")
