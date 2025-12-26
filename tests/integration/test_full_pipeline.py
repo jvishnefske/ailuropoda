@@ -18,7 +18,6 @@ HEADER_FILE = TEST_DIR / "simple_data.h"
 env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), trim_blocks=True, lstrip_blocks=True)
 
 # Import cpp_info fixture from test_cbor_codegen for C preprocessor details
-from tests.test_cbor_codegen import cpp_info
 
 
 @pytest.fixture(scope="module")  # Changed scope to module to build TinyCBOR once
@@ -205,7 +204,7 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
     assert (output_dir / generated_cmake_file_name).exists()
 
     # 2. Render the C++ test harness file from its template
-    print(f"Rendering C++ test harness from template...")
+    print("Rendering C++ test harness from template...")
     harness_template = env.get_template("c_test_harness_simple_data.cpp.jinja")  # Correct template name
     # Use the absolute path as `relative_to` with `walk_up` is not universally available.
     rendered_harness = harness_template.render(input_header_path=HEADER_FILE.absolute())
@@ -213,7 +212,7 @@ def setup_test_environment(tmp_path, tinycbor_install_path, cpp_info):
     print(f"Generated C++ test harness: {output_dir / test_harness_cpp_file_name}")
 
     # 3. Re-render CMakeLists.txt to include the test harness executable
-    print(f"Re-rendering CMakeLists.txt to include test harness...")
+    print("Re-rendering CMakeLists.txt to include test harness...")
     cmake_template = env.get_template("CMakeLists.txt.jinja")
     rendered_cmake = cmake_template.render(
         generated_library_name=generated_library_name,
