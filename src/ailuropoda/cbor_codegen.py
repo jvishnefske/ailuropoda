@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import shutil  # Import shutil for file operations
 
-from pycparser import CParser, c_ast, parse_file
+from pycparser import c_ast, parse_file
 from jinja2 import Environment, FileSystemLoader
 
 # Configure logging
