@@ -17,7 +17,7 @@ HEADER_FILE = TEST_DIR / "simple_data.h"
 # Setup Jinja2 environment for templates
 env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), trim_blocks=True, lstrip_blocks=True)
 
-# Import cpp_info fixture from test_cbor_codegen for C preprocessor details
+# cpp_info fixture is defined in conftest.py and shared across tests
 
 
 @pytest.fixture(scope="module")  # Changed scope to module to build TinyCBOR once

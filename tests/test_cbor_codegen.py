@@ -19,12 +19,7 @@ from ailuropoda.cbor_codegen import (
 )
 
 
-@pytest.fixture(scope="module")
-def cpp_info():
-    """Fixture to provide cpp_path and cpp_args for pycparser."""
-    # For unit tests, we rely on pycparser's ability to find standard headers
-    # if cpp is in PATH. If not, this might need more robust system include discovery.
-    return {"cpp_path": "cpp", "cpp_args": []}
+# cpp_info fixture is now defined in conftest.py
 
 
 def test_parse_c_string_with_includes(cpp_info):
