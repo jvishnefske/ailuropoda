@@ -1,4 +1,3 @@
-import pytest
 from pycparser import c_ast
 import sys
 from pathlib import Path
