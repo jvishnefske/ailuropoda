@@ -13,6 +13,21 @@
 
 # 🐼 Ailuropoda: Automate CBOR for C Structs
 
+## Quick Start (3 Commands)
+
+```bash
+# 1. Install
+pip install ailuropoda
+
+# 2. Generate CBOR code from your C header
+ailuropoda your_structs.h --output-dir ./generated_cbor
+
+# 3. Integrate with your CMake project
+cmake -B build && cmake --build build
+```
+
+---
+
 ## ✨ Tired of writing tedious, error-prone boilerplate C code for CBOR serialization and deserialization?
 
 **`Ailuropoda`** is your solution! This powerful Python tool automatically generates robust C functions to encode and decode your C structs into Concise Binary Object Representation (CBOR), seamlessly integrating with the TinyCBOR library.
